@@ -1,0 +1,11 @@
+# Aeris backend runtime (Python 3.12 target)
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+httpx==0.28.1
+python-dotenv==1.0.1
+influxdb-client==1.48.0
+paho-mqtt==2.1.0
+PyJWT==2.10.1
+passlib[bcrypt]==1.7.4
+python-dateutil==2.9.0.post0
