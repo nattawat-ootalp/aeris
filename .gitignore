@@ -5,6 +5,8 @@
 *.pem
 *.key
 secrets/
+firmware/**/config.h
+!firmware/**/config.example.h
 
 # ── Python ──
 __pycache__/

@@ -1,0 +1,51 @@
+"""Backend service configuration (shared by ingestion + core-api).
+
+# reused from AirSentinel (backend/app/config.py) — loads .env and exposes service creds.
+Extended for Aeris. Secrets come only from the environment / gitignored .env — never hardcoded.
+"""
+from __future__ import annotations
+
+import os
+
+from dotenv import load_dotenv
+
+# load the repo-root .env (…/aeris/.env) if present; on Render the vars are already in the env
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
+
+
+class Settings:
+    # ── Supabase ──
+    SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
+    SUPABASE_SERVICE_ROLE_KEY: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    SUPABASE_ANON_KEY: str = os.getenv("SUPABASE_ANON_KEY", "")
+
+    # ── InfluxDB Cloud ──
+    INFLUXDB_URL: str = os.getenv("INFLUXDB_URL", "")
+    INFLUXDB_TOKEN: str = os.getenv("INFLUXDB_TOKEN", "")
+    INFLUXDB_ORG: str = os.getenv("INFLUXDB_ORG", "")
+    INFLUXDB_BUCKET: str = os.getenv("INFLUXDB_BUCKET", "sensor_data")
+
+    # ── HiveMQ ──
+    HIVEMQ_HOST: str = os.getenv("HIVEMQ_HOST", "")
+    HIVEMQ_PORT: int = int(os.getenv("HIVEMQ_PORT", "8883"))
+    HIVEMQ_USERNAME: str = os.getenv("HIVEMQ_USERNAME", "")
+    HIVEMQ_PASSWORD: str = os.getenv("HIVEMQ_PASSWORD", "")
+
+    # ── Backend / API ──
+    BACKEND_HOST: str = os.getenv("BACKEND_HOST", "0.0.0.0")
+    BACKEND_PORT: int = int(os.getenv("BACKEND_PORT", "8000"))
+    JWT_SECRET: str = os.getenv("JWT_SECRET", "change-me")
+    JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
+    JWT_EXPIRE_HOURS: int = int(os.getenv("JWT_EXPIRE_HOURS", "12"))
+    CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
+
+    # ── Ingestion security ──
+    # HMAC secret for the HiveMQ webhook. Empty = dev mode (accept + warn), never in prod.
+    WEBHOOK_SECRET: str = os.getenv("WEBHOOK_SECRET", "")
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
+
+
+settings = Settings()

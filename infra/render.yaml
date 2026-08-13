@@ -1,0 +1,56 @@
+# Aeris — Render Blueprint (Infrastructure as Code).
+#
+# FREE-TIER TRADE-OFF (docs/DECISIONS.md, TDD §13):
+#   * `plan: free` web services SLEEP on idle (~50 s cold start on next request).
+#   * Because of that sleep, we do NOT run a persistent MQTT subscriber here.
+#     Station data arrives via HiveMQ webhook -> FastAPI HTTP (POST /webhook/telemetry,
+#     HMAC-signed with WEBHOOK_SECRET). No long-lived MQTT worker lives in this web service.
+#   * Images are built from infra/Dockerfile (Python 3.12) — local Docker is not required.
+#
+# Deploy: create a new Blueprint in Render pointed at this repo, or `render blueprint launch`.
+# Every value below marked `sync: false` is a SECRET and must be entered in the Render
+# dashboard (or via the Render API) — it is intentionally NOT stored in git.
+
+services:
+  - type: web
+    name: aeris-core-api
+    runtime: docker
+    plan: free
+    region: singapore            # closest free region to TH users; change if desired
+    dockerfilePath: infra/Dockerfile
+    dockerContext: .             # build from repo root so requirements.txt + packages are visible
+    healthCheckPath: /health
+    autoDeploy: false            # deploys are driven by CI (see .github/workflows/ci.yml)
+    envVars:
+      # ── Supabase (PostgreSQL 16 + RLS) — service_role key is server-side only ──
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      # ── InfluxDB Cloud (time-series) ──
+      - key: INFLUXDB_URL
+        sync: false
+      - key: INFLUXDB_TOKEN
+        sync: false
+      - key: INFLUXDB_ORG
+        sync: false
+      - key: INFLUXDB_BUCKET
+        sync: false
+      # ── HiveMQ Cloud (MQTT/TLS source; delivered here as a webhook) ──
+      - key: HIVEMQ_HOST
+        sync: false
+      - key: HIVEMQ_PORT
+        sync: false
+      - key: HIVEMQ_USERNAME
+        sync: false
+      - key: HIVEMQ_PASSWORD
+        sync: false
+      # ── Backend / API ──
+      - key: JWT_SECRET
+        sync: false
+      - key: WEBHOOK_SECRET
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false

@@ -1,0 +1,85 @@
+# Aeris CI/CD — lint + test, then build & publish the image, then (optionally) deploy.
+# TDD §13: GitHub Actions. Free stack: GHCR image + Render Free web service.
+name: ci
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+
+# Least privilege by default; the build job opts into packages:write to push to GHCR.
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/nattawat-ootalp/aeris
+
+jobs:
+  # ── 1) Lint + unit tests (runs on every push and PR) ─────────────────────────
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'          # deployed runtime is pinned to 3.12 (TDD §13)
+          cache: pip
+
+      - name: Install dev dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Ruff (lint)
+        run: ruff check .
+
+      - name: Pytest
+        run: pytest
+
+  # ── 2) Build the Docker image and push to GHCR (only on push to main) ────────
+  build-push:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write                     # required to push to ghcr.io
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .                      # repo root (Dockerfile copies root requirements.txt)
+          file: infra/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+
+  # ── 3) Trigger a Render deploy (optional) ────────────────────────────────────
+  # Runs only if a RENDER_DEPLOY_HOOK secret is configured (Render dashboard >
+  # service > Settings > Deploy Hook). If the secret is unset the step is skipped,
+  # so CI stays green before the Render service exists. Set the secret to enable.
+  deploy:
+    needs: build-push
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy (skipped when RENDER_DEPLOY_HOOK is unset)
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: |
+          if [ -z "${RENDER_DEPLOY_HOOK}" ]; then
+            echo "RENDER_DEPLOY_HOOK not set — skipping deploy trigger."
+            exit 0
+          fi
+          echo "Triggering Render deploy hook..."
+          curl -fsS -X POST "${RENDER_DEPLOY_HOOK}"
