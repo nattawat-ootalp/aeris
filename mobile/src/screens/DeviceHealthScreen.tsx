@@ -1,62 +1,44 @@
-/**
- * Device Health (TDD §7 MVP, §3.2, §14). Battery / sensor / firmware status ONLY.
- * Deliberately kept visually and structurally separate from environmental status:
- * a low battery is a device warning, NOT an air-quality caution. No WatchStatus badge
- * is used here on purpose.
- */
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import { api } from '../api/client';
-import { Card, Muted, Row, Screen } from '../components/ui';
-import { DEMO_DEVICE_ID } from '../constants';
-import { useAsync } from '../hooks/useAsync';
+/** Device Health (MVP) — battery/sensor/firmware. Kept SEPARATE from environmental status (§3.2/§14). */
+import { StyleSheet, Text, View } from 'react-native';
+import { Screen } from '../components/Screen';
 import { colors, space } from '../theme';
 
-export function DeviceHealthScreen() {
-  const { state } = useAsync(() => api.deviceHealth(DEMO_DEVICE_ID), [DEMO_DEVICE_ID]);
+type Row = { label: string; value: string; ok: boolean };
 
+// scaffold values; a real app fills these from the device/BLE + /nodes/{id}/telemetry health fields
+const ROWS: Row[] = [
+  { label: 'Battery', value: '82%', ok: true },
+  { label: 'PM sensor', value: 'OK', ok: true },
+  { label: 'T/RH sensor', value: 'OK', ok: true },
+  { label: 'Firmware', value: 'v1.0.0', ok: true },
+  { label: 'Last sync', value: '30s ago', ok: true },
+];
+
+export function DeviceHealthScreen() {
   return (
-    <Screen title="Device Health" subtitle="Hardware status only — not an environmental reading.">
-      <Card accent={colors.device} title="Portable device">
-        {state.status === 'loading' ? (
-          <ActivityIndicator color={colors.textMuted} />
-        ) : state.status === 'error' ? (
-          <Muted>Device status unavailable ({state.error}).</Muted>
-        ) : (
-          <>
-            <Row label="Device ID" value={state.data.device_id} />
-            <Row
-              label="Battery"
-              value={
-                <BatteryPill pct={state.data.battery_pct} />
-              }
-            />
-            <Row label="Sensor" value={state.data.sensor_status} />
-            <Row label="Firmware" value={state.data.fw_version} />
-            <Row label="Signal (RSSI)" value={state.data.rssi == null ? '—' : `${state.data.rssi} dBm`} />
-            <Row
-              label="Last seen"
-              value={state.data.last_seen_sec == null ? 'unknown' : `${state.data.last_seen_sec}s ago`}
-            />
-          </>
-        )}
-      </Card>
-      <Muted>Device warnings (e.g. low battery) are separate from air-quality status.</Muted>
+    <Screen title="Device Health" subtitle="How the device is doing — not the air around you.">
+      <View style={styles.card}>
+        {ROWS.map((r) => (
+          <View key={r.label} style={styles.row}>
+            <Text style={styles.label}>{r.label}</Text>
+            <View style={styles.valueWrap}>
+              <View style={[styles.dot, { backgroundColor: r.ok ? colors.normal : colors.high }]} />
+              <Text style={styles.value}>{r.value}</Text>
+            </View>
+          </View>
+        ))}
+      </View>
+      <Text style={styles.note}>Device warnings (e.g. low battery) are shown here, separate from air-quality status.</Text>
     </Screen>
   );
 }
 
-function BatteryPill({ pct }: { pct: number | null }) {
-  if (pct == null) return <Text style={styles.pillText}>—</Text>;
-  const low = pct < 20;
-  const color = low ? colors.statusHigh : colors.device;
-  return (
-    <View style={[styles.pill, { borderColor: color, backgroundColor: `${color}22` }]}>
-      <Text style={[styles.pillText, { color }]}>{pct}%{low ? ' · low' : ''}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  pill: { borderWidth: 1, borderRadius: 10, paddingVertical: 2, paddingHorizontal: space.sm },
-  pillText: { fontWeight: '700', fontSize: 13, color: colors.text },
+  card: { backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border },
+  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: space.md, borderBottomWidth: 1, borderBottomColor: colors.border },
+  label: { color: colors.text, fontSize: 15 },
+  valueWrap: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  dot: { width: 10, height: 10, borderRadius: 5 },
+  value: { color: colors.textMuted, fontSize: 14 },
+  note: { color: colors.textMuted, fontSize: 12, marginTop: space.md },
 });

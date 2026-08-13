@@ -1,55 +1,46 @@
 /**
- * Medical-safety lint (TDD §7, §14): the word "SAFE"/"Safe" must never appear as a
- * status label or assurance in the UI. The WatchStatus union already makes it a type
- * error to assign it to a status field; this is the belt-and-suspenders check that also
- * catches JSX text and stray string literals.
+ * Medical-safety guard (TDD §7/§14): fail the build if the banned assurance word "Safe"
+ * is used as a status VALUE (a quoted literal or JSX text). The typed `WatchStatus` union
+ * already makes it a type error; this is defense-in-depth and also covers plain strings.
  *
- * Strategy: strip comments (doc comments legitimately discuss the banned word), then
- * flag any string literal or JSX text node whose value is exactly "safe"/"SAFE".
- * src/safety.ts holds the intentional guard constant and is exempt.
- *
- * Zero dependencies — runnable with plain `node`. Exit 1 on any violation.
+ * It intentionally does NOT flag `SafeAreaView` (an identifier, not a quoted/JSX status) or
+ * prose in comments — only value-position usage.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 
-const SRC = join(dirname(fileURLToPath(import.meta.url)), '..', 'src');
-const EXEMPT = new Set(['safety.ts']); // intentional guard: `const BANNED_ASSURANCE = 'SAFE'`
+const ROOTS = ['src', 'App.tsx'];
+const EXT = /\.(ts|tsx)$/;
+const QUOTED = /(['"`])\s*safe\s*\1/i; // 'Safe' / "safe" / `SAFE`
+const JSX_TEXT = />\s*safe\s*</i; //      >Safe<
 
-/** Recursively collect .ts/.tsx files under a directory. */
-function walk(dir) {
-  const out = [];
-  for (const name of readdirSync(dir)) {
-    const p = join(dir, name);
-    if (statSync(p).isDirectory()) out.push(...walk(p));
-    else if (/\.tsx?$/.test(name) && !EXEMPT.has(name)) out.push(p);
+function files(p) {
+  try {
+    const s = statSync(p);
+    if (s.isFile()) return EXT.test(p) ? [p] : [];
+    return readdirSync(p).flatMap((n) => files(join(p, n)));
+  } catch {
+    return [];
   }
-  return out;
 }
-
-/** Remove // line comments and block comments so doc text is not scanned. */
-function stripComments(src) {
-  return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-}
-
-// A string literal whose entire content is safe/SAFE, or JSX text equal to it.
-const LITERAL = /(['"`])\s*safe\s*\1/i;
-const JSX_TEXT = />\s*safe\s*</i;
 
 let violations = 0;
-for (const file of walk(SRC)) {
-  const code = stripComments(readFileSync(file, 'utf8'));
-  code.split('\n').forEach((line, i) => {
-    if (LITERAL.test(line) || JSX_TEXT.test(line)) {
-      violations += 1;
-      console.error(`SAFE-assurance violation: ${file}:${i + 1}: ${line.trim()}`);
+for (const f of ROOTS.flatMap(files)) {
+  const lines = readFileSync(f, 'utf8').split('\n');
+  lines.forEach((line, i) => {
+    const trimmed = line.trim();
+    // skip comment lines — prose is allowed to explain the ban; only VALUE usage is flagged
+    if (trimmed.startsWith('*') || trimmed.startsWith('//') || trimmed.startsWith('/*')) return;
+    const code = line.split('//')[0]; // drop any trailing line-comment
+    if (QUOTED.test(code) || JSX_TEXT.test(code)) {
+      console.error(`  ${f}:${i + 1}: banned status value "Safe" -> ${line.trim()}`);
+      violations++;
     }
   });
 }
 
 if (violations > 0) {
-  console.error(`\n${violations} medical-safety violation(s): "SAFE" must not be a status/assurance.`);
+  console.error(`\n✗ no-SAFE check failed: ${violations} occurrence(s).`);
   process.exit(1);
 }
-console.log('check-no-safe: OK — no "SAFE" status/assurance found.');
+console.log('✓ no-SAFE check passed (watch vocabulary: Normal / Caution / High / No Data)');

@@ -1,133 +1,51 @@
-/**
- * Privacy Control (TDD §7 MVP, §9). Sync/share toggles, explicit consent, and data
- * withdrawal. Sharing area context is separated from — and can never include — private
- * symptom data (symptom_events never reach any public/shared view, TDD §9).
- */
+/** Privacy Control (MVP) — sync/share consent + data withdrawal (TDD §7/§9). */
 import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
-import { Banner, Card, Muted, Screen } from '../components/ui';
-import { colors, radius, space } from '../theme';
-import type { PrivacyPrefs } from '../types';
+import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { Screen } from '../components/Screen';
+import { colors, space } from '../theme';
 
 export function PrivacyControlScreen() {
-  const [prefs, setPrefs] = useState<PrivacyPrefs>({
-    syncEnabled: false,
-    shareAreaContext: false,
-    consentGiven: false,
-  });
-
-  function set<K extends keyof PrivacyPrefs>(key: K, value: PrivacyPrefs[K]) {
-    setPrefs((p) => {
-      const next = { ...p, [key]: value };
-      // Withdrawing consent disables all sync/share (TDD §9 data minimization).
-      if (key === 'consentGiven' && value === false) {
-        next.syncEnabled = false;
-        next.shareAreaContext = false;
-      }
-      return next;
-    });
-  }
-
-  function withdraw() {
-    Alert.alert('Withdraw data', 'Stop syncing and request deletion of synced data?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Withdraw',
-        style: 'destructive',
-        onPress: () => setPrefs({ syncEnabled: false, shareAreaContext: false, consentGiven: false }),
-      },
-    ]);
-  }
-
-  const locked = !prefs.consentGiven;
+  const [syncEnabled, setSyncEnabled] = useState(true);
+  const [shareArea, setShareArea] = useState(false);
+  const [withdrawn, setWithdrawn] = useState(false);
 
   return (
-    <Screen title="Privacy Control" subtitle="You decide what syncs and what is shared.">
-      <Banner accent={colors.privacy}>
-        Symptom entries are private and are never shared, regardless of these settings.
-      </Banner>
-
-      <Card title="Consent">
-        <ToggleRow
-          label="I consent to data sync"
-          description="Required before anything leaves this device."
-          value={prefs.consentGiven}
-          onValueChange={(v) => set('consentGiven', v)}
-        />
-      </Card>
-
-      <Card title="Sync & sharing">
-        <ToggleRow
-          label="Sync my data"
-          description="Back up exposure/decisions to your account."
-          value={prefs.syncEnabled}
-          disabled={locked}
-          onValueChange={(v) => set('syncEnabled', v)}
-        />
-        <ToggleRow
-          label="Share area context"
-          description="Contribute anonymized area readings. Never includes symptoms."
-          value={prefs.shareAreaContext}
-          disabled={locked}
-          onValueChange={(v) => set('shareAreaContext', v)}
-        />
-        {locked ? <Muted>Give consent above to enable sync and sharing.</Muted> : null}
-      </Card>
-
-      <Pressable style={styles.withdraw} onPress={withdraw}>
-        <Text style={styles.withdrawText}>Withdraw & delete synced data</Text>
+    <Screen title="Privacy" subtitle="You control what is stored and shared.">
+      <Toggle label="Sync my data to the cloud" value={syncEnabled} onChange={setSyncEnabled} />
+      <Toggle
+        label="Share anonymized AREA readings"
+        hint="Symptom data is never shared — only environmental readings, if you allow."
+        value={shareArea}
+        onChange={setShareArea}
+      />
+      <Pressable style={styles.withdraw} onPress={() => setWithdrawn(true)}>
+        <Text style={styles.withdrawText}>Withdraw & delete my synced data</Text>
       </Pressable>
+      {withdrawn ? <Text style={styles.msg}>Withdrawal requested — your synced data will be removed.</Text> : null}
+      <Text style={styles.note}>Private health/symptom data is owner-only and never appears on any public view.</Text>
     </Screen>
   );
 }
 
-function ToggleRow({
-  label,
-  description,
-  value,
-  onValueChange,
-  disabled,
-}: {
-  label: string;
-  description: string;
-  value: boolean;
-  onValueChange: (v: boolean) => void;
-  disabled?: boolean;
-}) {
+function Toggle({ label, hint, value, onChange }: { label: string; hint?: string; value: boolean; onChange: (v: boolean) => void }) {
   return (
-    <View style={[styles.toggleRow, disabled ? styles.dim : null]}>
+    <View style={styles.toggleRow}>
       <View style={styles.toggleText}>
-        <Text style={styles.toggleLabel}>{label}</Text>
-        <Text style={styles.toggleDesc}>{description}</Text>
+        <Text style={styles.label}>{label}</Text>
+        {hint ? <Text style={styles.hint}>{hint}</Text> : null}
       </View>
-      <Switch
-        value={value}
-        onValueChange={onValueChange}
-        disabled={disabled}
-        trackColor={{ true: colors.privacy, false: colors.border }}
-      />
+      <Switch value={value} onValueChange={onChange} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: space.sm,
-    gap: space.md,
-  },
-  dim: { opacity: 0.5 },
+  toggleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: space.md },
   toggleText: { flex: 1 },
-  toggleLabel: { color: colors.text, fontSize: 15, fontWeight: '600' },
-  toggleDesc: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
-  withdraw: {
-    borderWidth: 1,
-    borderColor: colors.statusHigh,
-    borderRadius: radius.sm,
-    paddingVertical: space.md,
-    alignItems: 'center',
-  },
-  withdrawText: { color: colors.statusHigh, fontWeight: '700', fontSize: 15 },
+  label: { color: colors.text, fontSize: 15 },
+  hint: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
+  withdraw: { borderWidth: 1, borderColor: colors.high, borderRadius: 8, padding: space.md, alignItems: 'center', marginTop: space.md },
+  withdrawText: { color: colors.high, fontWeight: '700' },
+  msg: { color: colors.textMuted, fontSize: 13 },
+  note: { color: colors.textMuted, fontSize: 12, marginTop: space.md },
 });

@@ -1,144 +1,61 @@
-/**
- * Symptom Event (TDD §7 MVP, §9). PRIVATE health data: logged to the user's own record
- * only, and NEVER rendered on any shared/public view. This screen contains no
- * environmental status and no medical interpretation — it only records what the user
- * reports (non-diagnostic, TDD §1.2, §9).
- */
+/** Symptom Event (MVP) — PRIVATE health log. Never shown on any shared/public view (TDD §9). */
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { api } from '../api/client';
-import { Banner, Card, Muted, Screen } from '../components/ui';
-import { DEMO_DEVICE_ID } from '../constants';
-import { colors, radius, space } from '../theme';
-import type { SymptomEventRecord, SymptomSeverity } from '../types';
+import { logSymptom } from '../api/client';
+import { Screen } from '../components/Screen';
+import { colors, space } from '../theme';
 
-const SEVERITIES: SymptomSeverity[] = ['mild', 'moderate', 'severe'];
+const LEVELS = ['mild', 'moderate', 'severe'] as const;
+type Level = (typeof LEVELS)[number];
 
 export function SymptomEventScreen() {
-  const [symptom, setSymptom] = useState('');
-  const [severity, setSeverity] = useState<SymptomSeverity>('mild');
+  const [severity, setSeverity] = useState<Level>('mild');
   const [note, setNote] = useState('');
-  const [log, setLog] = useState<SymptomEventRecord[]>([]);
-  const [saving, setSaving] = useState(false);
-  const [syncNote, setSyncNote] = useState<string | null>(null);
+  const [token, setToken] = useState(''); // scaffold: a real app supplies this from sign-in
+  const [msg, setMsg] = useState<string | null>(null);
 
-  async function save() {
-    if (!symptom.trim()) return;
-    setSaving(true);
-    const record: SymptomEventRecord = {
-      id: `${Date.now()}`,
-      symptom: symptom.trim(),
-      severity,
-      note: note.trim() || undefined,
-      occurred_at: new Date().toISOString(),
-    };
-    // Always keep the private local log; attempt a best-effort sync to the user's own record.
-    setLog((prev) => [record, ...prev]);
-    const res = await api.logSymptom(DEMO_DEVICE_ID, record);
-    setSyncNote(res.ok ? 'Synced to your private record.' : 'Saved locally (offline — not yet synced).');
-    setSymptom('');
-    setNote('');
-    setSeverity('mild');
-    setSaving(false);
+  function submit() {
+    if (!token) {
+      setMsg('Sign-in required to store private symptom data.');
+      return;
+    }
+    logSymptom(token, { severity, note: note || undefined })
+      .then(() => setMsg('Logged privately.'))
+      .catch((e) => setMsg(`Could not save: ${e}`));
   }
 
   return (
-    <Screen title="Symptom Event" subtitle="Log how you feel. Non-diagnostic.">
-      <Banner accent={colors.privacy}>Private health data — kept to you and never shown on shared views.</Banner>
-
-      <Card>
-        <Text style={styles.fieldLabel}>Symptom</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="e.g. wheezing, tight chest"
-          placeholderTextColor={colors.textMuted}
-          value={symptom}
-          onChangeText={setSymptom}
-        />
-
-        <Text style={[styles.fieldLabel, { marginTop: space.md }]}>Severity</Text>
-        <View style={styles.severityRow}>
-          {SEVERITIES.map((s) => {
-            const active = s === severity;
-            return (
-              <Pressable
-                key={s}
-                onPress={() => setSeverity(s)}
-                style={[styles.chip, active ? styles.chipActive : null]}
-              >
-                <Text style={[styles.chipText, active ? styles.chipTextActive : null]}>{s}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        <Text style={[styles.fieldLabel, { marginTop: space.md }]}>Note (optional)</Text>
-        <TextInput
-          style={[styles.input, styles.multiline]}
-          placeholder="context, triggers, medication taken…"
-          placeholderTextColor={colors.textMuted}
-          value={note}
-          onChangeText={setNote}
-          multiline
-        />
-
-        <Pressable style={styles.button} onPress={save} disabled={saving}>
-          <Text style={styles.buttonText}>{saving ? 'Saving…' : 'Log symptom'}</Text>
-        </Pressable>
-        {syncNote ? <Muted>{syncNote}</Muted> : null}
-      </Card>
-
-      {log.length > 0 ? (
-        <Card title="Your recent entries (private)">
-          {log.map((r) => (
-            <View key={r.id} style={styles.logRow}>
-              <Text style={styles.logSymptom}>
-                {r.symptom} · {r.severity}
-              </Text>
-              <Text style={styles.logTime}>{new Date(r.occurred_at).toLocaleString()}</Text>
-              {r.note ? <Text style={styles.logNote}>{r.note}</Text> : null}
-            </View>
-          ))}
-        </Card>
-      ) : null}
+    <Screen title="Symptom" subtitle="Private to you — used only to help you notice patterns.">
+      <View style={styles.pills}>
+        {LEVELS.map((l) => (
+          <Pressable key={l} onPress={() => setSeverity(l)} style={[styles.pill, severity === l ? styles.pillActive : null]}>
+            <Text style={[styles.pillText, severity === l ? styles.pillTextActive : null]}>{l}</Text>
+          </Pressable>
+        ))}
+      </View>
+      <TextInput style={styles.note} value={note} onChangeText={setNote} placeholder="Optional note" placeholderTextColor={colors.textMuted} multiline />
+      <TextInput style={styles.tokenInput} value={token} onChangeText={setToken} placeholder="Session token (dev)" placeholderTextColor={colors.textMuted} autoCapitalize="none" />
+      <Pressable style={styles.button} onPress={submit}>
+        <Text style={styles.buttonText}>Log symptom</Text>
+      </Pressable>
+      {msg ? <Text style={styles.msg}>{msg}</Text> : null}
+      <Text style={styles.disclaimer}>
+        Aeris records what you feel — it does not diagnose, confirm a cause, or replace medical advice.
+      </Text>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  fieldLabel: { color: colors.textMuted, fontSize: 13, marginBottom: space.xs },
-  input: {
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    color: colors.text,
-    paddingHorizontal: space.md,
-    paddingVertical: space.sm,
-    fontSize: 15,
-  },
-  multiline: { minHeight: 64, textAlignVertical: 'top' },
-  severityRow: { flexDirection: 'row', gap: space.sm },
-  chip: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    paddingVertical: space.xs,
-    paddingHorizontal: space.md,
-  },
-  chipActive: { borderColor: colors.privacy, backgroundColor: `${colors.privacy}22` },
-  chipText: { color: colors.textMuted, fontWeight: '600' },
-  chipTextActive: { color: colors.privacy },
-  button: {
-    marginTop: space.lg,
-    backgroundColor: colors.privacy,
-    borderRadius: radius.sm,
-    paddingVertical: space.md,
-    alignItems: 'center',
-  },
-  buttonText: { color: '#0f1419', fontWeight: '800', fontSize: 15 },
-  logRow: { paddingVertical: space.sm, borderTopWidth: 1, borderTopColor: colors.border },
-  logSymptom: { color: colors.text, fontWeight: '600' },
-  logTime: { color: colors.textMuted, fontSize: 12 },
-  logNote: { color: colors.textMuted, fontSize: 13, marginTop: 2 },
+  pills: { flexDirection: 'row', gap: space.sm },
+  pill: { borderWidth: 1, borderColor: colors.border, borderRadius: 20, paddingVertical: space.sm, paddingHorizontal: space.md },
+  pillActive: { backgroundColor: colors.caution, borderColor: colors.caution },
+  pillText: { color: colors.textMuted, textTransform: 'capitalize' },
+  pillTextActive: { color: '#111', fontWeight: '700' },
+  note: { borderWidth: 1, borderColor: colors.border, borderRadius: 8, color: colors.text, padding: space.sm, minHeight: 72, backgroundColor: colors.surface },
+  tokenInput: { borderWidth: 1, borderColor: colors.border, borderRadius: 8, color: colors.text, padding: space.sm, backgroundColor: colors.surface },
+  button: { backgroundColor: colors.normal, borderRadius: 8, padding: space.md, alignItems: 'center' },
+  buttonText: { color: '#fff', fontWeight: '700' },
+  msg: { color: colors.textMuted, fontSize: 13 },
+  disclaimer: { color: colors.textMuted, fontSize: 12, marginTop: space.md, fontStyle: 'italic' },
 });
