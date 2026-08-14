@@ -18,6 +18,10 @@ class Settings:
     SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
     SUPABASE_SERVICE_ROLE_KEY: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
     SUPABASE_ANON_KEY: str = os.getenv("SUPABASE_ANON_KEY", "")
+    # Legacy HS256 JWT secret (Supabase dashboard -> Project Settings -> API) — verifies
+    # mobile-issued Supabase Auth tokens (email + anonymous sign-in). Empty = mobile auth
+    # tokens are rejected; internal admin tokens (create_token) still work without it.
+    SUPABASE_JWT_SECRET: str = os.getenv("SUPABASE_JWT_SECRET", "")
 
     # ── InfluxDB Cloud ──
     INFLUXDB_URL: str = os.getenv("INFLUXDB_URL", "")

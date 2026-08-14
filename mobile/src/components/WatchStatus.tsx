@@ -1,16 +1,29 @@
 /**
- * The single status badge used across the app and on the watch surface.
- * Its only input is the closed `WatchStatus` union — "Safe" cannot be passed (TDD §7/§14).
+ * The single Hero Status card used on Home/Destination and the compact StatusBadge used
+ * elsewhere. Input is the closed `WatchStatus` union — "Safe" cannot be passed (TDD §7/§14).
  */
 import { StyleSheet, Text, View } from 'react-native';
-import { colors, space, statusColor } from '../theme';
+import { colors, radius, space, statusBg, statusColor, statusCopy, type } from '../theme';
 import type { WatchStatus as Status } from '../types';
 
-export function WatchStatus({ status, subtitle }: { status: Status; subtitle?: string }) {
+const ICON: Record<Status, string> = { Normal: '●', Caution: '▲', High: '■', 'No Data': '?' };
+
+export function HeroStatusCard({ status, freshnessLabel }: { status: Status; freshnessLabel?: string }) {
+  return (
+    <View style={[styles.hero, { backgroundColor: statusBg(status), borderColor: statusColor(status) }]}>
+      <Text style={[styles.heroIcon, { color: statusColor(status) }]}>{ICON[status]}</Text>
+      <Text style={[styles.heroLabel, { color: statusColor(status) }]}>{status.toUpperCase()}</Text>
+      <Text style={styles.heroDesc}>{statusCopy[status]}</Text>
+      {freshnessLabel ? <Text style={styles.heroFreshness}>{freshnessLabel}</Text> : null}
+    </View>
+  );
+}
+
+export function StatusBadge({ status, subtitle }: { status: Status; subtitle?: string }) {
   return (
     <View style={[styles.badge, { borderColor: statusColor(status) }]}>
-      <View style={[styles.dot, { backgroundColor: statusColor(status) }]} />
-      <View>
+      <Text style={[styles.dot, { color: statusColor(status) }]}>{ICON[status]}</Text>
+      <View style={{ flex: 1 }}>
         <Text style={styles.label}>{status}</Text>
         {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
       </View>
@@ -19,17 +32,31 @@ export function WatchStatus({ status, subtitle }: { status: Status; subtitle?: s
 }
 
 const styles = StyleSheet.create({
+  hero: {
+    borderWidth: 1.5,
+    borderRadius: radius.lg,
+    padding: space.lg,
+    alignItems: 'center',
+    gap: space.xs,
+  },
+  heroIcon: { fontSize: 22 },
+  heroLabel: { ...type.display, letterSpacing: 1 },
+  heroDesc: { ...type.body, color: colors.text, textAlign: 'center', marginTop: space.xs },
+  heroFreshness: { ...type.caption, color: colors.textMuted, marginTop: space.xs },
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.sm,
-    borderWidth: 2,
-    borderRadius: 12,
+    borderWidth: 1.5,
+    borderRadius: radius.md,
     paddingVertical: space.md,
     paddingHorizontal: space.md,
     backgroundColor: colors.surface,
   },
-  dot: { width: 14, height: 14, borderRadius: 7 },
-  label: { color: colors.text, fontSize: 22, fontWeight: '800' },
-  subtitle: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
+  dot: { fontSize: 18 },
+  label: { ...type.h2, color: colors.text },
+  subtitle: { ...type.caption, color: colors.textMuted, marginTop: 2 },
 });
+
+// Backward-compat alias used by earlier screens.
+export { StatusBadge as WatchStatus };
