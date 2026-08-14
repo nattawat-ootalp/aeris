@@ -43,6 +43,6 @@ export function PersonalPatternScreen() {
 
 const styles = StyleSheet.create({
   condition: { ...type.body, color: colors.textMuted, marginBottom: space.sm },
-  warnBox: { backgroundColor: colors.unknownBg, borderRadius: 12, padding: space.md },
+  warnBox: { backgroundColor: colors.unknownSoft, borderRadius: 12, padding: space.md },
   warnText: { ...type.caption, color: colors.text },
 });

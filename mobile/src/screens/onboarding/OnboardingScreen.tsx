@@ -27,7 +27,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg, padding: space.lg, justifyContent: 'space-between' },
   logo: { ...type.h1, color: colors.primary, textAlign: 'center', marginTop: space.xl },
   center: { alignItems: 'center', gap: space.lg },
-  deviceArt: { width: 140, height: 140, borderRadius: radius.lg, backgroundColor: colors.normalBg },
+  deviceArt: { width: 140, height: 140, borderRadius: radius.lg, backgroundColor: colors.primarySoft },
   headline: { ...type.h1, color: colors.text, textAlign: 'center' },
   bottom: { gap: space.sm, paddingBottom: space.lg },
   privacyNote: { ...type.caption, color: colors.textMuted, textAlign: 'center' },

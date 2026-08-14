@@ -9,8 +9,12 @@ import 'react-native-url-polyfill/auto';
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
+const CONFIGURED = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+// createClient() validates the URL immediately and throws if it's empty/malformed — before
+// env vars are set (e.g. local preview), fall back to a syntactically valid placeholder so
+// module load never crashes the app. `CONFIGURED` gates every real auth call below.
+export const supabase = createClient(SUPABASE_URL || 'https://placeholder.supabase.co', SUPABASE_ANON_KEY || 'placeholder', {
   auth: {
     storage: AsyncStorage,
     autoRefreshToken: true,
@@ -22,7 +26,7 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 /** Ensure the user has a session (anonymous is fine) and return a bearer token, or null if
  * Supabase isn't configured yet (EXPO_PUBLIC_SUPABASE_URL/ANON_KEY unset). */
 export async function ensureSessionToken(): Promise<string | null> {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
+  if (!CONFIGURED) return null;
   const { data } = await supabase.auth.getSession();
   if (data.session?.access_token) return data.session.access_token;
   const { data: anon, error } = await supabase.auth.signInAnonymously();

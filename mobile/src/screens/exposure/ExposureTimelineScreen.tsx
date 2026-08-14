@@ -47,10 +47,10 @@ export function ExposureTimelineScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  actions: { flexDirection: 'row', gap: space.sm, paddingHorizontal: space.lg, paddingTop: space.xl },
-  actionBtn: { flex: 1, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: space.sm, alignItems: 'center' },
+  actions: { flexDirection: 'row', gap: space.sm },
+  actionBtn: { flex: 1, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: space.md, alignItems: 'center' },
   actionText: { color: colors.primary, fontWeight: '700', fontSize: 13 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: space.sm, backgroundColor: colors.surface, marginHorizontal: space.lg, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: space.md },
+  row: { flexDirection: 'row', alignItems: 'center', gap: space.sm, backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.border, padding: space.md },
   rail: { width: 4, alignSelf: 'stretch', borderRadius: 2 },
   time: { ...type.body, color: colors.text, fontWeight: '600' },
   level: { ...type.caption, color: colors.textMuted, marginTop: 2 },

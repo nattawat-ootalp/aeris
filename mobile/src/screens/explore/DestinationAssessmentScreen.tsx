@@ -30,7 +30,7 @@ export function DestinationAssessmentScreen({ route, navigation }: Props) {
         <HeroStatusCard status="No Data" freshnessLabel="Could not reach service" />
       ) : (
         <>
-          <HeroStatusCard status={state.data.watch_label} freshnessLabel={statusLine(state.data)} />
+          <HeroStatusCard status={state.data.watch_label} pm25={state.data.pm25} freshnessLabel={statusLine(state.data)} />
           <View style={styles.reasons}>
             {state.data.reason_codes.map((c) => (
               <Text key={c} style={styles.reason}>• {c.replaceAll('_', ' ').toLowerCase()}</Text>
