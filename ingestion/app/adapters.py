@@ -7,7 +7,7 @@ validation layer and differ only in transport.
 from __future__ import annotations
 
 from intelligence.models import Reading
-from intelligence.parsing import parse_reading, parse_timestamp
+from intelligence.parsing import parse_reading, parse_timestamp, tvoc_ppb
 
 from .schemas import PortableTelemetry, StationTelemetry
 
@@ -44,4 +44,9 @@ def station_to_reading(s: StationTelemetry) -> Reading:
         sensor_status="OK" if pm25 is not None else "ERROR",
         quality_score=None,
         schema_version=s.schema_version,
+        # AirSentinel stations already report TVOC — free win, symmetric with portable.
+        tvoc=tvoc_ppb(_sensor_num(s.sensors, "tvoc")),
+        # No station eCO2: a station's "co2" sensor (if present) is a real SCD40 measurement,
+        # not a VOC-derived estimate — it must never be mapped into this field.
+        eco2=None,
     )

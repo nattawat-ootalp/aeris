@@ -36,4 +36,6 @@ export type ProfileStackParamList = {
   SensorHealth: undefined;
   Privacy: undefined;
   PairSensor: undefined;
+  Notifications: undefined;
+  About: undefined;
 };

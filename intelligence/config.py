@@ -40,6 +40,15 @@ class IntelligenceConfig:
     # not immediately trusted — persistence (§5.7) decides whether it is real.
     spike_delta_pm25: float = 80.0
     spike_min_interval_sec: float = 60.0
+    # SGP30 plausibility bounds (datasheet), §5.1 tier only — same as pm25_min/max above.
+    # An out-of-range value drops just that field to None at the parser boundary; it NEVER
+    # invalidates pm25_valid/usable (SGP30 is optional context, not a PM sensor). Not to be
+    # confused with pm25_env_caution/pm25_env_high below, which ARE decision thresholds —
+    # there is no equivalent decision threshold for tvoc/eco2 (§14 invariant: PM-driven only).
+    tvoc_min_ppb: float = 0.0
+    tvoc_max_ppb: float = 60000.0
+    eco2_min_ppm: float = 400.0
+    eco2_max_ppm: float = 60000.0
 
     # ── Environmental state (§5.2) — NOT medical ──
     pm25_env_caution: float = _f("PM25_ENV_CAUTION", 37.5)

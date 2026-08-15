@@ -1,4 +1,6 @@
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { NotificationsScreen } from '../screens/home/NotificationsScreen';
+import { AboutScreen } from '../screens/profile/AboutScreen';
 import { PairSensorScreen } from '../screens/profile/PairSensorScreen';
 import { PrivacyScreen } from '../screens/profile/PrivacyScreen';
 import { ProfileSettingsScreen } from '../screens/profile/ProfileSettingsScreen';
@@ -15,6 +17,8 @@ export function ProfileStackNavigator() {
       <Stack.Screen name="SensorHealth" component={SensorHealthScreen} options={{ title: '' }} />
       <Stack.Screen name="Privacy" component={PrivacyScreen} options={{ title: '' }} />
       <Stack.Screen name="PairSensor" component={PairSensorScreen} options={{ title: '' }} />
+      <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ title: '' }} />
+      <Stack.Screen name="About" component={AboutScreen} options={{ title: '' }} />
     </Stack.Navigator>
   );
 }

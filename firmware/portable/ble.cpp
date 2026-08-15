@@ -75,7 +75,10 @@ bool bleIsConnected() { return connected; }
 
 void bleNotifyTelemetry(const SensorData& data, bool sensorsValid, int battery_pct, float quality_score) {
   // JSON doc kept well under the ~185-byte MTU target from the BLE contract.
-  StaticJsonDocument<192> doc;
+  // Measured worst case with tvoc/eco2 included: ~158 bytes (< 180 budget).
+  // ArduinoJson v7's JsonDocument is elastic — this capacity is advisory/documentation,
+  // not a hard limit — but keep it a realistic ceiling for readers of this file.
+  StaticJsonDocument<256> doc;
   bool pmValid = data.pms_valid;
   if (pmValid) {
     doc["pm25"] = data.pm2_5;
@@ -84,26 +87,40 @@ void bleNotifyTelemetry(const SensorData& data, bool sensorsValid, int battery_p
     doc["temperature"] = data.temperature;
     doc["humidity"] = data.humidity;
   }
+  // SGP30 TVOC/eCO2 — omitted entirely when invalid (incl. the 15 s warmup and when the
+  // chip is absent). Omission is what tells the phone/backend "no data"; a fabricated 0
+  // would read as a real clean-air value. Same invariant as pm25 above.
+  if (data.sgp30_valid) {
+    doc["tvoc"] = (uint16_t)data.tvoc;   // ppb, integer
+    doc["eco2"] = (uint16_t)data.eco2;   // ppm, ESTIMATED from VOC — not a real CO2 measurement
+  }
   doc["battery"] = battery_pct;
-  // sensor_status reflects PM validity — an invalid PM sensor must never look like "OK"
-  // so the phone/backend never build a PM-based caution on missing data (TDD §5.1/§14).
+  // sensor_status reflects PM validity ONLY — an invalid PM sensor must never look like
+  // "OK" so the phone/backend never build a PM-based caution on missing data (TDD §5.1/§14).
+  // Deliberately NOT folding SGP30 validity in here: a missing/absent SGP30 must never
+  // suppress a perfectly good PM reading. SGP30 health is surfaced separately via the
+  // Device status characteristic's "sgp30" field (see bleNotifyStatus below).
   doc["sensor_status"] = pmValid ? "OK" : "ERROR";
   doc["quality_score"] = quality_score;
   doc["ts"] = (uint32_t)(millis() / 1000);
 
   String out;
   serializeJson(doc, out);
+  Serial.printf("[BLE] telemetry (%u B): %s\n", (unsigned)out.length(), out.c_str());
   telemetryChar->setValue(out.c_str());
   if (connected) telemetryChar->notify();
 }
 
-void bleNotifyStatus(int battery_pct, const char* sensor_status, const char* fw_version) {
-  StaticJsonDocument<128> doc;
+void bleNotifyStatus(int battery_pct, const char* sensor_status, const char* sgp30_status, const char* fw_version) {
+  StaticJsonDocument<192> doc;
   doc["battery"] = battery_pct;
   doc["sensor_status"] = sensor_status;
   doc["fw"] = fw_version;
+  // SGP30 health: "OK" | "WARMUP" | "ERROR" — see portable.ino's sgp30StatusString().
+  doc["sgp30"] = sgp30_status;
   String out;
   serializeJson(doc, out);
+  Serial.printf("[BLE] status (%u B): %s\n", (unsigned)out.length(), out.c_str());
   statusChar->setValue(out.c_str());
   if (connected) statusChar->notify();
 }

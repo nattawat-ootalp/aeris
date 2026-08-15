@@ -55,6 +55,11 @@ create trigger trg_devices_updated_at
 -- ─────────────────────────────────────────────────────────────────────────────
 -- exposure_events — aggregated exposure windows (§5.3, ENVIRONMENTAL)
 -- Time-series raw samples live in InfluxDB; this stores the derived windows.
+-- NOTE: this includes the SGP30 fields (tvoc ppb, eco2 ppm — eco2 is a VOC-derived
+-- CO2-equivalent ESTIMATE, not a true CO2 measurement) added alongside pm25/temperature/
+-- humidity. They are written to the InfluxDB `air_quality` measurement (see
+-- ingestion/app/writers.py) only when present; there is no per-sample relational table here
+-- to add columns to, so no new Postgres migration is needed for this addition.
 -- ─────────────────────────────────────────────────────────────────────────────
 create table if not exists public.exposure_events (
     id                          uuid primary key default gen_random_uuid(),

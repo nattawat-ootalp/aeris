@@ -11,14 +11,42 @@ export interface PortableTelemetry {
   pm25?: number;
   temperature?: number;
   humidity?: number;
+  /** Total VOC, ppb. OMITTED by the firmware while the SGP30 is warming up (15s) or invalid —
+   *  `undefined` means no data; never render it as 0 or a stale prior value. */
+  tvoc?: number;
+  /** CO2-equivalent ESTIMATED from VOC sensing, ppm — NOT a direct CO2 measurement. OMITTED
+   *  while the SGP30 is warming up or invalid; same no-data rule as `tvoc`. */
+  eco2?: number;
   battery: number;
+  /** Reflects PM sensor validity only — does NOT indicate SGP30/VOC health. */
   sensor_status: 'OK' | 'WARMUP' | 'ERROR';
   quality_score: number;
   ts: number;
 }
 
-export function scanForPortables(_onFound: (device: unknown) => void): () => void {
+export interface PortableStatus {
+  battery?: number;
+  sensor_status?: 'OK' | 'WARMUP' | 'ERROR';
+  fw?: string;
+  sgp30?: 'OK' | 'WARMUP' | 'ERROR';
+}
+
+export type ScanFailureReason = 'permission-denied' | 'bluetooth-off' | 'scan-error';
+
+export async function requestBlePermissions(): Promise<boolean> {
+  return false;
+}
+
+export async function isBluetoothPoweredOn(): Promise<boolean> {
+  return false;
+}
+
+export async function scanForPortables(
+  _onFound: (device: unknown) => void,
+  onFailure: (reason: ScanFailureReason) => void,
+): Promise<() => void> {
   console.warn('[ble.web] Bluetooth is not available in the web preview.');
+  onFailure('scan-error');
   return () => {};
 }
 
@@ -26,6 +54,7 @@ export async function connectAndSubscribe(
   _device: unknown,
   _onTelemetry: (t: PortableTelemetry) => void,
   _onDisconnected: () => void,
+  _onStatus?: (s: PortableStatus) => void,
 ): Promise<{ remove: () => void }> {
   throw new Error('Bluetooth is not available in the web preview — use a dev-client build.');
 }

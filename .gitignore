@@ -41,3 +41,9 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# ── Local session/capture artifacts (not part of the project) ──
+.claude/
+serial_capture.txt
+*-this-session-is-being-continued-from-a-previous-c.txt
+aeris old.txt

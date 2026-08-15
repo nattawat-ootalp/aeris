@@ -1,20 +1,22 @@
 /** Screen 02 — Pair Sensor. Connect the Aeris Portable Device over Bluetooth. */
+import { Ionicons } from '@expo/vector-icons';
 import { useEffect } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { PrimaryButton, SecondaryButton } from '../../components/ui';
 import { Screen } from '../../components/Screen';
+import { eco2Label, tvocLabel } from '../../lib/format';
 import { usePortable } from '../../state/portable';
 import { colors, radius, space, type } from '../../theme';
 
 export function PairSensorScreen() {
-  const { state, deviceName, telemetry, startPairing, stopPairing, disconnectDevice } = usePortable();
+  const { state, deviceName, telemetry, scanFailure, startPairing, stopPairing, disconnectDevice } = usePortable();
 
   useEffect(() => stopPairing, [stopPairing]);
 
   return (
     <Screen title="Connect your device" subtitle="Pair your Aeris Portable over Bluetooth">
       <View style={styles.center}>
-        <Text style={styles.bt}>{state === 'connected' ? '🔗' : '📶'}</Text>
+        <Ionicons name={state === 'connected' ? 'bluetooth' : 'bluetooth-outline'} size={40} color={state === 'connected' ? colors.primary : colors.textMuted} />
         <Text style={styles.stateText}>{stateLabel(state)}</Text>
       </View>
 
@@ -23,6 +25,9 @@ export function PairSensorScreen() {
           <Text style={styles.deviceName}>{deviceName}</Text>
           <Text style={styles.deviceMeta}>
             Battery {telemetry?.battery ?? '—'}% · {telemetry?.sensor_status ?? 'waiting for data'}
+          </Text>
+          <Text style={styles.deviceMeta}>
+            TVOC {tvocLabel(telemetry?.tvoc)} · eCO2 (estimated) {eco2Label(telemetry?.eco2)}
           </Text>
           <SecondaryButton label="Disconnect" onPress={disconnectDevice} />
         </View>
@@ -34,6 +39,7 @@ export function PairSensorScreen() {
             onPress={startPairing}
             disabled={state === 'scanning' || state === 'connecting'}
           />
+          {scanFailure ? <Text style={styles.errorText}>{scanFailureLabel(scanFailure)}</Text> : null}
         </View>
       )}
 
@@ -44,6 +50,17 @@ export function PairSensorScreen() {
       <Text style={styles.note}>Bluetooth pairing requires a development build (not Expo Go).</Text>
     </Screen>
   );
+}
+
+function scanFailureLabel(reason: string): string {
+  switch (reason) {
+    case 'permission-denied':
+      return 'Bluetooth permission was denied. Enable it in your phone\'s app settings and try again.';
+    case 'bluetooth-off':
+      return 'Bluetooth is turned off. Turn it on and try again.';
+    default:
+      return 'Could not start scanning. Try again.';
+  }
 }
 
 function stateLabel(s: string): string {
@@ -57,7 +74,6 @@ function stateLabel(s: string): string {
 
 const styles = StyleSheet.create({
   center: { alignItems: 'center', gap: space.sm, paddingVertical: space.lg },
-  bt: { fontSize: 40 },
   stateText: { ...type.body, color: colors.textMuted },
   card: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, padding: space.md, gap: space.sm, minHeight: 72 },
   deviceName: { ...type.h2, color: colors.text },
@@ -65,4 +81,5 @@ const styles = StyleSheet.create({
   help: { flexDirection: 'row', justifyContent: 'center', gap: space.lg },
   helpLink: { color: colors.primary, fontWeight: '600' },
   note: { ...type.caption, color: colors.textMuted, textAlign: 'center' },
+  errorText: { ...type.caption, color: colors.high, textAlign: 'center', marginTop: space.sm },
 });

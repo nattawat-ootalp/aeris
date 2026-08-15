@@ -70,3 +70,36 @@ def test_symptom_requires_auth(monkeypatch):
     tok = create_token("user-123")
     r = client.post("/symptoms", json={"severity": "mild"}, headers={"Authorization": f"Bearer {tok}"})
     assert r.status_code == 200 and r.json()["stored"] is True
+
+
+def test_symptom_mapping(monkeypatch):
+    captured_payloads = []
+    monkeypatch.setattr(repo, "store_symptom", lambda sub, p: captured_payloads.append((sub, p)) or [{"id": "x"}])
+    tok = create_token("user-456")
+
+    # Test with multiple symptoms, started_at, and moderate severity
+    json_data = {
+        "symptoms": ["cough", "wheeze"],
+        "severity": "moderate",
+        "started_at": "2026-08-14T09:22:31.000Z",
+        "note": "Felt bad after run"
+    }
+    r = client.post("/symptoms", json=json_data, headers={"Authorization": f"Bearer {tok}"})
+    assert r.status_code == 200
+    assert len(captured_payloads) == 1
+    sub, payload = captured_payloads[0]
+    assert sub == "user-456"
+    assert isinstance(payload, list)
+    assert len(payload) == 2
+
+    # Check cough symptom mapping
+    assert payload[0]["symptom_type"] == "cough"
+    assert payload[0]["severity"] == 5
+    assert payload[0]["occurred_at"] == "2026-08-14T09:22:31.000Z"
+    assert payload[0]["note"] == "Felt bad after run"
+
+    # Check wheeze symptom mapping
+    assert payload[1]["symptom_type"] == "wheeze"
+    assert payload[1]["severity"] == 5
+    assert payload[1]["occurred_at"] == "2026-08-14T09:22:31.000Z"
+    assert payload[1]["note"] == "Felt bad after run"

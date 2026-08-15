@@ -14,8 +14,12 @@
 void initBLE();
 // Push one telemetry sample. sensorsValid = data.pms_valid && data.scd40_valid (PM/T/RH ready).
 // battery_pct: 0-100 from the fuel gauge/ADC; quality_score: on-device 0..1 estimate.
+// tvoc (ppb) / eco2 (ppm, estimated) are read from data.tvoc/data.eco2 and included only
+// when data.sgp30_valid — never a fabricated value during warmup or when the chip is absent.
 void bleNotifyTelemetry(const SensorData& data, bool sensorsValid, int battery_pct, float quality_score);
-void bleNotifyStatus(int battery_pct, const char* sensor_status, const char* fw_version);
+// sensor_status: PM validity only ("OK"/"ERROR"). sgp30_status: "OK"|"WARMUP"|"ERROR",
+// see portable.ino's sgp30StatusString().
+void bleNotifyStatus(int battery_pct, const char* sensor_status, const char* sgp30_status, const char* fw_version);
 bool bleIsConnected();
 
 #endif // BLE_H

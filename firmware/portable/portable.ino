@@ -2,9 +2,10 @@
 //  Aeris Portable — Main Firmware (ESP32-S3)
 //  Personal Environmental Exposure — BLE-only (no WiFi/MQTT)
 //
-//  Sensors reused from AirSentinel: PMS7003 (PM2.5/PM10), SCD40 (Temp/Hum).
-//  Portable MVP reports pm25/temperature/humidity/battery/sensor_status/
-//  quality_score only — no CO2/TVOC (TDD §3.1). See docs/ble-contract.md.
+//  Sensors reused from AirSentinel: PMS7003 (PM2.5/PM10), SCD40 (Temp/Hum/CO2), SGP30 (TVOC/eCO2).
+//  Portable reports pm25/temperature/humidity/tvoc/eco2/battery/sensor_status/
+//  quality_score over BLE. tvoc/eco2 (SGP30, estimated CO2-equivalent) are included only
+//  when valid. True CO2 from the SCD40 (NDIR) is still NOT sent over BLE. See docs/ble-contract.md.
 // ============================================================
 
 #include "sensors.h"
@@ -27,9 +28,24 @@ static SensorData latestData = {};
 
 static float onDeviceQualityScore(const SensorData& data) {
   // simple device-side estimate; the backend's §5.1 gate is authoritative
+  // Deliberately PM/SCD40 only — quality_score feeds the PM-driven decision path, and the
+  // SGP30 is optional/absent hardware on this unit; letting a missing SGP30 drag the score
+  // down would degrade every PM decision for no medical benefit. See docs/ble-contract.md.
   if (!data.pms_valid) return 0.0f;
   if (!data.scd40_valid) return 0.6f;
   return 1.0f;
+}
+
+// SGP30 needs ~15 s warmup (sensors.cpp). isSensorReady() can't distinguish "warming up"
+// from "chip absent/not found", so treat !ready inside this boot-window grace period as
+// WARMUP and anything after it as ERROR. Conservative by design: a mid-run I2C-recovery
+// re-warmup (see sensors.cpp recoverI2CBus()) will report ERROR rather than a false WARMUP/OK —
+// never claims health it can't confirm. See docs/ble-contract.md.
+#define SGP30_WARMUP_GRACE_MS 20000
+static const char* sgp30StatusString(const SensorData& data) {
+  if (data.sgp30_valid) return "OK";
+  if (!isSensorReady() && millis() < SGP30_WARMUP_GRACE_MS) return "WARMUP";
+  return "ERROR";
 }
 
 void setup() {
@@ -64,7 +80,7 @@ void loop() {
   if (now - lastStatusNotify >= STATUS_NOTIFY_INTERVAL_MS) {
     lastStatusNotify = now;
     const char* status = latestData.pms_valid ? "OK" : "ERROR";
-    bleNotifyStatus(BATTERY_PLACEHOLDER_PCT, status, FW_VERSION);
+    bleNotifyStatus(BATTERY_PLACEHOLDER_PCT, status, sgp30StatusString(latestData), FW_VERSION);
   }
 
   delay(50);

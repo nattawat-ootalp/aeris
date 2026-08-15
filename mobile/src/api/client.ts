@@ -4,7 +4,22 @@
  * fabricates a current value when data is missing or stale (TDD §6/§14).
  */
 import { ensureSessionToken } from '../lib/supabase';
-import type { DecisionEvent, DestinationAssessment, NodeMarker, SymptomEventInput } from '../types';
+import type {
+  DailySummary,
+  DataQuality,
+  DecisionEvent,
+  DestinationAssessment,
+  DeviceRecord,
+  ExposureEventDetail,
+  ExposureTimelineEvent,
+  NodeMarker,
+  PersonalBaseline,
+  PersonalPattern,
+  PrivacySettings,
+  SymptomEventInput,
+  Thresholds,
+  WeeklyHistory,
+} from '../types';
 
 export const BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
@@ -14,18 +29,33 @@ async function getJson<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-async function postJsonAuthed<T>(path: string, body: unknown): Promise<T> {
+async function getJsonAuthed<T>(path: string): Promise<T> {
   const token = await ensureSessionToken();
   const res = await fetch(`${BASE_URL}${path}`, {
-    method: 'POST',
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+  if (!res.ok) throw new Error(`GET ${path} -> ${res.status}`);
+  return (await res.json()) as T;
+}
+
+async function sendJsonAuthed<T>(method: 'POST' | 'PUT', path: string, body: unknown): Promise<T> {
+  const token = await ensureSessionToken();
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method,
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`POST ${path} -> ${res.status}`);
+  if (!res.ok) throw new Error(`${method} ${path} -> ${res.status}`);
   return (await res.json()) as T;
+}
+
+async function postJsonAuthed<T>(path: string, body: unknown): Promise<T> {
+  return sendJsonAuthed('POST', path, body);
 }
 
 export async function getHealth(): Promise<{ status: string }> {
@@ -48,8 +78,28 @@ export async function getNodeHistory(deviceId: string, hours = 24): Promise<{ po
   return getJson(`/nodes/${encodeURIComponent(deviceId)}/history?hours=${hours}`);
 }
 
+export async function getThresholds(): Promise<Thresholds> {
+  return getJson('/config/thresholds');
+}
+
 export async function getRanking(topN = 8): Promise<{ ranking: NodeMarker[] }> {
   return getJson(`/dashboard/ranking?top_n=${topN}`);
+}
+
+export interface AlertEvent {
+  node_id: string;
+  sensor: string;
+  value: number;
+  threshold: number;
+  standard?: string;
+  severity: string;
+  is_anomaly?: boolean;
+  timestamp?: string;
+  triggered_at?: string;
+}
+
+export async function getAlerts(limit = 50): Promise<{ alerts: AlertEvent[] }> {
+  return getJson(`/alerts?limit=${limit}`);
 }
 
 export async function logSymptom(input: SymptomEventInput): Promise<{ stored: boolean }> {
@@ -62,6 +112,10 @@ export async function ingestPortable(payload: {
   pm25?: number;
   temperature?: number;
   humidity?: number;
+  /** ppb. Omit (leave undefined) when the SGP30 has no reading — never send 0/null as a stand-in. */
+  tvoc?: number;
+  /** ppm, ESTIMATED from VOC sensing (not a direct CO2 measurement). Same omit-when-absent rule as tvoc. */
+  eco2?: number;
   battery?: number;
   sensor_status?: string;
   quality_score?: number;
@@ -73,4 +127,72 @@ export async function ingestPortable(payload: {
   });
   if (!res.ok) throw new Error(`POST /ingest/portable -> ${res.status}`);
   return (await res.json()) as { accepted: boolean };
+}
+
+const dev = (deviceId: string) => `/devices/${encodeURIComponent(deviceId)}`;
+
+export async function getDailySummary(deviceId: string): Promise<DailySummary> {
+  return getJsonAuthed(`${dev(deviceId)}/daily-summary`);
+}
+
+export async function getExposureTimeline(
+  deviceId: string,
+  hours = 24,
+): Promise<{ events: ExposureTimelineEvent[] }> {
+  return getJson(`${dev(deviceId)}/exposure-timeline?hours=${hours}`);
+}
+
+export async function getExposureEvent(
+  deviceId: string,
+  eventId: string,
+  hours = 24,
+): Promise<ExposureEventDetail> {
+  return getJson(`${dev(deviceId)}/exposure-timeline/${encodeURIComponent(eventId)}?hours=${hours}`);
+}
+
+export async function getWeeklyHistory(deviceId: string, days = 7): Promise<WeeklyHistory> {
+  return getJson(`${dev(deviceId)}/weekly?days=${days}`);
+}
+
+export async function getDataQuality(deviceId: string): Promise<DataQuality> {
+  return getJson(`${dev(deviceId)}/data-quality`);
+}
+
+export async function getPersonalBaseline(deviceId: string): Promise<PersonalBaseline> {
+  return getJsonAuthed(`${dev(deviceId)}/baseline`);
+}
+
+export async function getPersonalPattern(deviceId: string, days = 30): Promise<PersonalPattern> {
+  return getJsonAuthed(`${dev(deviceId)}/pattern?days=${days}`);
+}
+
+// ── Privacy / data rights ──
+export async function getPrivacy(): Promise<PrivacySettings> {
+  return getJsonAuthed('/privacy');
+}
+
+export async function updatePrivacy(changes: Partial<PrivacySettings>): Promise<PrivacySettings> {
+  return sendJsonAuthed('PUT', '/privacy', changes);
+}
+
+export async function exportMyData(): Promise<{ exported_at: string; user_id: string; data: Record<string, unknown[]> }> {
+  return getJsonAuthed('/privacy/export');
+}
+
+export async function withdrawMyData(): Promise<{ withdrawn: boolean; deleted: Record<string, number> }> {
+  return postJsonAuthed('/privacy/withdraw', {});
+}
+
+// ── Device registry ──
+export async function getMyDevices(): Promise<{ devices: DeviceRecord[] }> {
+  return getJsonAuthed('/me/devices');
+}
+
+export async function registerDevice(device: {
+  external_id: string;
+  kind?: 'portable' | 'station';
+  label?: string;
+  fw_version?: string;
+}): Promise<{ registered: boolean; device: DeviceRecord | null }> {
+  return postJsonAuthed('/me/devices', device);
 }

@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "main": "index.ts",
   "dependencies": {
+    "@expo/metro-runtime": "~57.0.9",
+    "@expo/vector-icons": "^15.0.2",
     "@react-native-async-storage/async-storage": "^3.1.1",
     "@react-navigation/bottom-tabs": "^7.18.16",
     "@react-navigation/native": "^7.3.16",
@@ -14,11 +16,13 @@
     "expo-linear-gradient": "~57.0.1",
     "expo-status-bar": "~57.0.1",
     "react": "19.2.3",
+    "react-dom": "19.2.3",
     "react-native": "0.86.2",
     "react-native-ble-plx": "^3.5.1",
     "react-native-safe-area-context": "^5.9.0",
     "react-native-screens": "^4.27.0",
     "react-native-url-polyfill": "^4.0.0",
+    "react-native-web": "^0.21.2",
     "react-native-webview": "^14.0.1"
   },
   "devDependencies": {
@@ -27,12 +31,13 @@
   },
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "check:safety": "node scripts/check-no-safe.mjs",
-    "check": "npm run typecheck && npm run check:safety"
+    "check": "npm run typecheck && npm run check:safety && npm run check:hardcode",
+    "check:hardcode": "node scripts/check-no-hardcode.mjs"
   },
   "private": true
 }

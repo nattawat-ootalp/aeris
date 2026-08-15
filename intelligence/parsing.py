@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from math import exp
 
+from .config import CONFIG, IntelligenceConfig
 from .models import Reading
 
 
@@ -36,6 +37,29 @@ def _num(value):
         return None
 
 
+def _ranged(value, lo: float, hi: float):
+    """Best-effort float within [lo, hi]; None (missing, unparseable, or out of range).
+
+    Used for SGP30 plausibility bounds only. An out-of-range value drops just this one
+    field to None — it must never be treated as an invalid PM reading (§5.1 stays PM-only).
+    """
+    v = _num(value)
+    if v is None or v < lo or v > hi:
+        return None
+    return v
+
+
+def tvoc_ppb(value, cfg: IntelligenceConfig = CONFIG):
+    """SGP30 TVOC (ppb). None if absent, unparseable, or outside the datasheet range."""
+    return _ranged(value, cfg.tvoc_min_ppb, cfg.tvoc_max_ppb)
+
+
+def eco2_ppm(value, cfg: IntelligenceConfig = CONFIG):
+    """SGP30 eCO2 (ppm) — a VOC-derived CO2-EQUIVALENT ESTIMATE, not a true CO2 measurement
+    (the SCD40 measures real CO2). None if absent, unparseable, or outside the datasheet range."""
+    return _ranged(value, cfg.eco2_min_ppm, cfg.eco2_max_ppm)
+
+
 def parse_reading(payload: dict) -> Reading:
     """Parse an Aeris telemetry payload (§4) into a Reading.
 
@@ -60,6 +84,8 @@ def parse_reading(payload: dict) -> Reading:
         sensor_status=str(payload.get("sensor_status", "OK")),
         quality_score=_num(payload.get("quality_score")),
         schema_version=str(payload.get("schema_version", "1.0")),
+        tvoc=tvoc_ppb(payload.get("tvoc")),
+        eco2=eco2_ppm(payload.get("eco2")),
     )
 
 

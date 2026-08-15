@@ -32,8 +32,16 @@ def sb_get(table: str, params: dict | None = None) -> list:
     return r.json()
 
 
-def sb_post(table: str, data) -> list:
-    r = httpx.post(_url(table), headers=_headers(), json=data, timeout=_TIMEOUT)
+def sb_post(table: str, data, params: dict | None = None, headers: dict | None = None) -> list:
+    """Insert rows. Pass ``headers={"Prefer": "resolution=merge-duplicates,..."}`` together
+    with ``params={"on_conflict": "<cols>"}`` to upsert on a unique constraint."""
+    r = httpx.post(
+        _url(table),
+        headers={**_headers(), **(headers or {})},
+        params=params or {},
+        json=data,
+        timeout=_TIMEOUT,
+    )
     r.raise_for_status()
     return r.json()
 

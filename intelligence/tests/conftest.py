@@ -26,6 +26,8 @@ def make_reading(
     quality_score=None,
     device_id="P001",
     base: datetime = NOW,
+    tvoc=None,
+    eco2=None,
 ) -> Reading:
     """Reading whose timestamp is ``age_sec`` before ``base`` (default NOW)."""
     return Reading(
@@ -37,4 +39,6 @@ def make_reading(
         battery=battery,
         sensor_status=sensor_status,
         quality_score=quality_score,
+        tvoc=tvoc,
+        eco2=eco2,
     )

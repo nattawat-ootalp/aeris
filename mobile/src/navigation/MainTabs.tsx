@@ -1,5 +1,6 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Platform, Text } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { Platform } from 'react-native';
 import { colors, shadow } from '../theme';
 import { ExploreStackNavigator } from './ExploreStack';
 import { ExposureStackNavigator } from './ExposureStack';
@@ -9,12 +10,12 @@ import { ProfileStackNavigator } from './ProfileStack';
 
 const Tab = createBottomTabNavigator();
 
-const ICONS: Record<string, string> = {
-  HomeTab: '🏠',
-  ExposureTab: '📈',
-  ExploreTab: '📍',
-  HistoryTab: '🕐',
-  ProfileTab: '👤',
+const ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+  HomeTab: 'home-outline',
+  ExposureTab: 'trending-up-outline',
+  ExploreTab: 'location-outline',
+  HistoryTab: 'time-outline',
+  ProfileTab: 'person-outline',
 };
 
 export function MainTabs() {
@@ -34,8 +35,8 @@ export function MainTabs() {
           paddingBottom: Platform.OS === 'ios' ? 28 : 10,
           ...shadow,
         },
-        tabBarIcon: ({ focused }) => (
-          <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.55 }}>{ICONS[route.name]}</Text>
+        tabBarIcon: ({ focused, color }) => (
+          <Ionicons name={ICONS[route.name]} size={22} color={color} style={{ opacity: focused ? 1 : 0.7 }} />
         ),
       })}
     >

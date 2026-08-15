@@ -57,3 +57,19 @@ def test_battery_low_is_separate_from_environmental_usability(now):
     q = assess_quality(make_reading(pm25=12, battery=10), now=now)
     assert q.battery_low is True
     assert q.usable is True  # device health must not block environmental data
+
+
+def test_missing_sgp30_does_not_affect_usability(now):
+    # SGP30 is optional hardware, not even wired on the test device — absent tvoc/eco2 must
+    # never make an otherwise-good PM reading unusable.
+    q = assess_quality(make_reading(pm25=12, tvoc=None, eco2=None), now=now)
+    assert q.usable and q.pm25_valid
+    assert q.reasons == []
+
+
+def test_out_of_range_sgp30_does_not_affect_usability(now):
+    # A bad/implausible SGP30 value must invalidate only that field (handled upstream in
+    # parsing), never the PM-driven usable/pm25_valid gate itself.
+    q = assess_quality(make_reading(pm25=12, tvoc=99999, eco2=5), now=now)
+    assert q.usable and q.pm25_valid
+    assert q.reasons == []

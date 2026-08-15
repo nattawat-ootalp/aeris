@@ -44,6 +44,12 @@ def _fields(reading: Reading, quality: QualityResult) -> dict:
         f["humidity"] = float(reading.humidity)
     if reading.battery is not None:
         f["battery"] = float(reading.battery)
+    # SGP30 context (optional hardware) — written only when present; a missing/invalid sensor
+    # must never fabricate a 0. eco2 is a VOC-derived estimate, not a true CO2 measurement.
+    if reading.tvoc is not None:
+        f["tvoc"] = float(reading.tvoc)
+    if reading.eco2 is not None:
+        f["eco2"] = float(reading.eco2)
     f["quality_score"] = float(quality.quality_score)
     f["pm25_valid"] = 1.0 if quality.pm25_valid else 0.0
     return f

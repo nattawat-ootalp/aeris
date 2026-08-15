@@ -51,6 +51,30 @@ def test_parse_reading_requires_device_id():
         parse_reading({"timestamp": "2026-08-11T14:30:00Z"})
 
 
+def test_parse_reading_accepts_sgp30_fields():
+    r = parse_reading({
+        "device_id": "P001", "timestamp": "2026-08-11T14:30:00Z",
+        "pm25": 12.0, "tvoc": 150.5, "eco2": 612,
+    })
+    assert r.tvoc == 150.5
+    assert r.eco2 == 612.0
+
+
+def test_parse_reading_absent_sgp30_is_none_not_zero():
+    r = parse_reading({"device_id": "P001", "timestamp": "2026-08-11T14:30:00Z", "pm25": 12.0})
+    assert r.tvoc is None and r.eco2 is None  # must not silently become 0
+
+
+def test_parse_reading_drops_out_of_range_sgp30_but_keeps_pm25():
+    r = parse_reading({
+        "device_id": "P001", "timestamp": "2026-08-11T14:30:00Z",
+        "pm25": 12.0, "tvoc": 99999, "eco2": 0,  # tvoc over datasheet max; eco2 below the 400 floor
+    })
+    assert r.tvoc is None
+    assert r.eco2 is None
+    assert r.pm25 == 12.0  # an out-of-range SGP30 value must never affect PM
+
+
 def test_unit_conversions():
     assert c_to_f(0) == 32.0
     assert c_to_f(100) == 212.0

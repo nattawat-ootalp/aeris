@@ -2,12 +2,18 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { StyleSheet, Text, View } from 'react-native';
 import { PrimaryButton } from '../../components/ui';
+import { markOnboarded } from '../../lib/onboarding';
 import { colors, radius, space, type } from '../../theme';
 import type { RootStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Onboarding'>;
 
 export function OnboardingScreen({ navigation }: Props) {
+  async function start() {
+    await markOnboarded();
+    navigation.replace('Main');
+  }
+
   return (
     <View style={styles.root}>
       <Text style={styles.logo}>Aeris</Text>
@@ -16,7 +22,7 @@ export function OnboardingScreen({ navigation }: Props) {
         <Text style={styles.headline}>เข้าใจสภาพแวดล้อมรอบตัวคุณ{'\n'}แบบเฉพาะบุคคล</Text>
       </View>
       <View style={styles.bottom}>
-        <PrimaryButton label="เริ่มต้นใช้งาน" onPress={() => navigation.replace('Main')} />
+        <PrimaryButton label="เริ่มต้นใช้งาน" onPress={start} />
         <Text style={styles.privacyNote}>ข้อมูลของคุณเป็นส่วนตัวและอยู่ในการควบคุมของคุณเสมอ</Text>
       </View>
     </View>

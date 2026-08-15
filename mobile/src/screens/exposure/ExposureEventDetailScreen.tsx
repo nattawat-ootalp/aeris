@@ -1,35 +1,63 @@
-/** Screen 06 — Exposure Event Detail. */
+/** Screen 06 — Exposure Event Detail. One measured period, with the context recorded during it. */
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useCallback } from 'react';
 import { StyleSheet, Text } from 'react-native';
-import { InfoCard, MetaRow, PrimaryButton } from '../../components/ui';
+import { getExposureEvent } from '../../api/client';
+import { EmptyState, ErrorState, InfoCard, LoadingState, MetaRow } from '../../components/ui';
 import { Screen } from '../../components/Screen';
+import { clockLabel, durationLabel, eco2Label, tvocLabel, valueLabel } from '../../lib/format';
+import { useActiveDeviceId, withDevice } from '../../lib/device';
+import { useRemote } from '../../lib/useRemote';
 import { colors, type } from '../../theme';
 import type { ExposureStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<ExposureStackParamList, 'ExposureEventDetail'>;
 
 export function ExposureEventDetailScreen({ route }: Props) {
+  const { eventId } = route.params;
+  const activeDeviceId = useActiveDeviceId();
+  const { data, loading, error, noDevice, reload } = useRemote(
+    useCallback(() => withDevice(activeDeviceId, (id) => getExposureEvent(id, eventId, 24)), [activeDeviceId, eventId]),
+  );
+
+  if (loading) {
+    return (
+      <Screen title="Exposure period">
+        <LoadingState />
+      </Screen>
+    );
+  }
+  if (error || !data) {
+    return (
+      <Screen title="Exposure period">
+        {noDevice ? <EmptyState title="ยังไม่มีอุปกรณ์สำหรับแสดงข้อมูล" /> : <ErrorState reason="This period is no longer in the current window" onRetry={reload} />}
+      </Screen>
+    );
+  }
+
   return (
-    <Screen title="09:40 – 10:05" subtitle="Commute">
+    <Screen title={`${clockLabel(data.start)} – ${clockLabel(data.end)}`} subtitle={data.level}>
       <InfoCard title="Environment">
-        <MetaRow label="PM2.5" value="42 µg/m³" />
-        <MetaRow label="PM10" value="58 µg/m³" />
-        <MetaRow label="Temperature" value="31°C" />
-        <MetaRow label="Humidity" value="70%" />
+        <MetaRow label="PM2.5 average" value={valueLabel(data.pm25_avg, 'µg/m³')} />
+        <MetaRow label="PM2.5 peak" value={valueLabel(data.pm25_max, 'µg/m³')} />
+        <MetaRow label="Temperature" value={valueLabel(data.temperature_avg, '°C', 1)} />
+        <MetaRow label="Humidity" value={valueLabel(data.humidity_avg, '%')} />
+        <MetaRow label="TVOC" value={tvocLabel(data.tvoc_avg ?? undefined)} />
+        <MetaRow label="eCO2 (estimated)" value={eco2Label(data.eco2_avg)} />
       </InfoCard>
       <InfoCard title="Context">
-        <MetaRow label="Duration" value="25 min" />
-        <MetaRow label="Trend" value="Rising then falling" />
+        <MetaRow label="Duration" value={durationLabel(data.duration_sec)} />
+        <MetaRow label="Trend" value={data.trend ?? 'Not enough samples'} />
+        <MetaRow label="Samples" value={String(data.sample_count)} />
       </InfoCard>
-      <InfoCard title="Data Quality">
-        <MetaRow label="Confidence" value="HIGH" />
-      </InfoCard>
-      <Text style={styles.eventId}>Event #{route.params.eventId}</Text>
-      <PrimaryButton label="Add activity" onPress={() => {}} />
+      <Text style={styles.note}>
+        This period is derived from the readings your device actually recorded — gaps in coverage
+        are excluded rather than filled in.
+      </Text>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  eventId: { ...type.caption, color: colors.textMuted },
+  note: { ...type.caption, color: colors.textMuted },
 });

@@ -1,48 +1,62 @@
 /** Screen 14 — Personal Pattern. An association to notice — never "Trigger" or "Cause". */
-import { StyleSheet, Text, View } from 'react-native';
-import { EmptyState, InfoCard, MetaRow } from '../../components/ui';
+import { useCallback } from 'react';
+import { StyleSheet, Text } from 'react-native';
+import { getPersonalPattern } from '../../api/client';
+import { EmptyState, ErrorState, InfoCard, LoadingState, MetaRow } from '../../components/ui';
 import { Screen } from '../../components/Screen';
-import { colors, space, type } from '../../theme';
-import type { PersonalPattern } from '../../types';
+import { useActiveDeviceId, withDevice } from '../../lib/device';
+import { useRemote } from '../../lib/useRemote';
+import { colors, type } from '../../theme';
 
-const MOCK: PersonalPattern = {
-  title: 'Elevated exposure often precedes a symptom event',
-  condition: 'PM2.5 > your baseline for 20+ min',
-  event_count: 9,
-  co_occurrence_count: 6,
-  sample_size: 9,
-  uncertainty: 0.18,
-  sufficient: true,
-};
+function percent(value: number | null): string {
+  return value == null ? 'No Data' : `${Math.round(value * 100)}%`;
+}
 
 export function PersonalPatternScreen() {
-  if (!MOCK.sufficient) {
-    return (
-      <Screen title="Personal Pattern">
-        <EmptyState title="Insufficient sample — check back after more data is collected" />
-      </Screen>
-    );
-  }
+  const activeDeviceId = useActiveDeviceId();
+  const { data, loading, error, noDevice, reload } = useRemote(
+    useCallback(() => withDevice(activeDeviceId, (id) => getPersonalPattern(id, 30)), [activeDeviceId]),
+  );
+
   return (
     <Screen title="Personal Pattern" subtitle="รูปแบบที่พบจากข้อมูลย้อนหลัง">
-      <InfoCard title={MOCK.title}>
-        <Text style={styles.condition}>{MOCK.condition}</Text>
-        <MetaRow label="Events" value={`${MOCK.event_count}`} />
-        <MetaRow label="Co-occurred with symptom" value={`${MOCK.co_occurrence_count} times`} />
-        <MetaRow label="Sample size" value={`${MOCK.sample_size}`} />
-        <MetaRow label="Uncertainty" value={`± ${((MOCK.uncertainty ?? 0) * 100).toFixed(0)}%`} />
-      </InfoCard>
-      <View style={styles.warnBox}>
-        <Text style={styles.warnText}>
-          This is an observed association, not a proven cause. It does not mean this exposure caused your symptom.
-        </Text>
-      </View>
+      {loading ? (
+        <LoadingState />
+      ) : error ? (
+        noDevice ? <EmptyState title="ยังไม่มีอุปกรณ์สำหรับแสดงข้อมูล" /> : <ErrorState reason="Could not load your pattern" onRetry={reload} />
+      ) : !data || data.sample_size === 0 ? (
+        <EmptyState title="ยังไม่มีเหตุการณ์อาการที่บันทึกไว้ในช่วง 30 วัน" />
+      ) : (
+        <>
+          <InfoCard title={data.title}>
+            <Text style={styles.condition}>{data.condition}</Text>
+            <MetaRow label="Observed" value={`${data.co_occurrence_count} of ${data.sample_size} events`} />
+            <MetaRow label="Proportion" value={percent(data.association)} />
+            <MetaRow
+              label="Uncertainty (95%)"
+              value={data.uncertainty == null ? 'No Data' : `±${Math.round(data.uncertainty * 100)}%`}
+            />
+            <MetaRow label="Exposure periods seen" value={String(data.exposure_episode_count)} />
+          </InfoCard>
+          {!data.sufficient ? (
+            // §5.5 hard rule: below the minimum sample size the association is shown but must
+            // be marked as too small to read anything into.
+            <Text style={styles.warn}>
+              Sample is still small — this proportion can change a lot with a few more events.
+            </Text>
+          ) : null}
+          <Text style={styles.note}>
+            This is an observational association, not a proven cause. Aeris does not diagnose or
+            explain why symptoms happen.
+          </Text>
+        </>
+      )}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  condition: { ...type.body, color: colors.textMuted, marginBottom: space.sm },
-  warnBox: { backgroundColor: colors.unknownSoft, borderRadius: 12, padding: space.md },
-  warnText: { ...type.caption, color: colors.text },
+  condition: { ...type.secondary, color: colors.textMuted, marginBottom: 4 },
+  warn: { ...type.caption, color: colors.caution },
+  note: { ...type.caption, color: colors.textMuted, fontStyle: 'italic' },
 });

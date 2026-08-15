@@ -20,6 +20,11 @@ class PortableTelemetry(BaseModel):
     battery: int | None = None
     sensor_status: str = "OK"
     quality_score: float | None = None
+    # SGP30 (optional hardware) — absent entirely when the sensor is invalid/warming up.
+    # Absent means "no data"; never coerce a missing value to 0.
+    tvoc: float | None = None   # Total VOC, ppb
+    eco2: float | None = None   # VOC-derived CO2-equivalent ESTIMATE, ppm — NOT a true CO2
+    # measurement (the SCD40 measures real CO2).
 
 
 # ── Station (AirSentinel 1.2) — from HiveMQ webhook ──

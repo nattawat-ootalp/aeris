@@ -37,6 +37,25 @@ def test_portable_invalid_pm_stored_but_flagged_no_caution(client, offline):
     assert body["pm25_valid"] is False and body["usable"] is False
 
 
+def test_portable_accepts_sgp30_fields_end_to_end(client, offline):
+    r = client.post("/ingest/portable", json={
+        "device_id": "P001", "timestamp": _now_iso(),
+        "pm25": 12.0, "tvoc": 150.5, "eco2": 612, "sensor_status": "OK",
+    })
+    body = r.json()
+    assert body["accepted"] and body["pm25_valid"] and body["usable"]
+
+
+def test_portable_bad_sgp30_does_not_break_pm(client, offline):
+    # an implausible SGP30 value must never make an otherwise-good PM reading unusable
+    r = client.post("/ingest/portable", json={
+        "device_id": "P001", "timestamp": _now_iso(),
+        "pm25": 12.0, "tvoc": 99999, "sensor_status": "OK",
+    })
+    body = r.json()
+    assert body["accepted"] and body["pm25_valid"] and body["usable"]
+
+
 def test_station_webhook_requires_valid_signature(client, monkeypatch):
     monkeypatch.setattr(settings, "WEBHOOK_SECRET", "s3cret")
     payload = {

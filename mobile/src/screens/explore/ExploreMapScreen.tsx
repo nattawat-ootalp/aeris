@@ -1,11 +1,12 @@
 /** Screen 08 — Explore / Map. Places around you, from AirSentinel nodes. */
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useEffect, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { getRanking } from '../../api/client';
 import { LongdoMap } from '../../components/LongdoMap';
-import { LoadingState } from '../../components/ui';
+import { EmptyState, ErrorState, LoadingState } from '../../components/ui';
 import { freshnessLabel, isStale } from '../../lib/format';
+import { useRemote } from '../../lib/useRemote';
 import { colors, space, statusColor, type } from '../../theme';
 import type { ExploreStackParamList } from '../../navigation/types';
 import type { NodeMarker } from '../../types';
@@ -13,15 +14,19 @@ import type { NodeMarker } from '../../types';
 type Props = NativeStackScreenProps<ExploreStackParamList, 'ExploreMap'>;
 
 export function ExploreMapScreen({ navigation }: Props) {
-  const [nodes, setNodes] = useState<NodeMarker[] | null>(null);
-  const [selected, setSelected] = useState<NodeMarker | null>(null);
+  const { data, loading, error, reload } = useRemote(useCallback(() => getRanking(20), []));
+  const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [query, setQuery] = useState('');
 
-  useEffect(() => {
-    getRanking(20)
-      .then((r) => setNodes(r.ranking))
-      .catch(() => setNodes([]));
-  }, []);
+  const nodes = data?.ranking ?? [];
+  const matches = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return nodes;
+    return nodes.filter((n) => `${n.name} ${n.node_code}`.toLowerCase().includes(q));
+  }, [nodes, query]);
+
+  // The sheet follows the search: an explicit pick wins, otherwise the top match.
+  const selected = matches.find((n) => n.node_code === selectedCode) ?? matches[0] ?? null;
 
   return (
     <View style={styles.root}>
@@ -29,27 +34,55 @@ export function ExploreMapScreen({ navigation }: Props) {
         <TextInput
           style={styles.search}
           value={query}
-          onChangeText={setQuery}
+          onChangeText={(t) => { setQuery(t); setSelectedCode(null); }}
           placeholder="Search a place"
           placeholderTextColor={colors.textMuted}
         />
       </View>
       <View style={styles.mapWrap}>
-        {nodes == null ? <LoadingState /> : <LongdoMap markers={nodes} />}
+        {loading ? (
+          <LoadingState />
+        ) : error ? (
+          <ErrorState reason="Could not load nearby stations" onRetry={reload} />
+        ) : matches.length === 0 ? (
+          <EmptyState title={query ? `No station matches “${query}”` : 'No stations reporting right now'} />
+        ) : (
+          <LongdoMap
+            markers={matches}
+            center={selected ? { lat: selected.lat, lon: selected.lon } : null}
+          />
+        )}
       </View>
-      {nodes && nodes.length > 0 ? (
-        <Pressable style={styles.sheet} onPress={() => setSelected(nodes[0])}>
+
+      {matches.length > 0 ? (
+        <View style={styles.sheet}>
           <View style={styles.sheetHandle} />
-          {selected ?? nodes[0] ? (
+          {matches.length > 1 ? (
+            <View style={styles.pickRow}>
+              {matches.slice(0, 4).map((n) => (
+                <Pressable
+                  key={n.node_code}
+                  onPress={() => setSelectedCode(n.node_code)}
+                  style={[styles.pick, selected?.node_code === n.node_code ? styles.pickOn : null]}
+                >
+                  <Text style={styles.pickText} numberOfLines={1}>{n.name || n.node_code}</Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+          {selected ? (
             <NodeSheetContent
-              node={selected ?? nodes[0]}
-              onAssess={() => {
-                const n = selected ?? nodes[0];
-                navigation.navigate('DestinationAssessment', { name: n.name || n.node_code, lat: n.lat, lon: n.lon });
-              }}
+              node={selected}
+              onAssess={() =>
+                navigation.navigate('DestinationAssessment', {
+                  name: selected.name || selected.node_code,
+                  lat: selected.lat,
+                  lon: selected.lon,
+                })
+              }
             />
           ) : null}
-        </Pressable>
+        </View>
       ) : null}
     </View>
   );
@@ -61,7 +94,7 @@ function NodeSheetContent({ node, onAssess }: { node: NodeMarker; onAssess: () =
     <View style={styles.sheetContent}>
       <Text style={styles.sheetTitle}>{node.name || node.node_code}</Text>
       <Text style={[styles.sheetStatus, { color: statusColor(stale ? 'No Data' : node.watch_label) }]}>
-        {stale ? 'STALE' : node.watch_label} {node.pm25 != null ? `· PM2.5 ${node.pm25}` : ''}
+        {stale ? 'STALE' : node.watch_label} {node.pm25 != null ? `· PM2.5 ${node.pm25.toFixed(0)}` : ''}
       </Text>
       <Text style={styles.sheetMeta}>{freshnessLabel(node.freshness_sec)}</Text>
       <Pressable style={styles.assessBtn} onPress={onAssess}>
@@ -78,6 +111,10 @@ const styles = StyleSheet.create({
   mapWrap: { flex: 1, marginHorizontal: space.md, marginBottom: space.md, borderRadius: 16, overflow: 'hidden' },
   sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: space.md, borderTopWidth: 1, borderColor: colors.border },
   sheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: space.sm },
+  pickRow: { flexDirection: 'row', gap: space.sm, marginBottom: space.sm },
+  pick: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 999, paddingVertical: 6, paddingHorizontal: space.sm, backgroundColor: colors.bgTint },
+  pickOn: { backgroundColor: colors.primarySoft, borderColor: colors.primary },
+  pickText: { ...type.caption, color: colors.text, textAlign: 'center' },
   sheetContent: { gap: 4 },
   sheetTitle: { ...type.h2, color: colors.text },
   sheetStatus: { ...type.body, fontWeight: '700' },

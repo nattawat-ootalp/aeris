@@ -1,41 +1,51 @@
 /** Screen 13 — Personal Baseline. What the system has learned from YOUR data. Not a medical range. */
-import { StyleSheet, Text, View } from 'react-native';
-import { EmptyState, InfoCard, MetaRow } from '../../components/ui';
+import { useCallback } from 'react';
+import { StyleSheet, Text } from 'react-native';
+import { getPersonalBaseline } from '../../api/client';
+import { EmptyState, ErrorState, InfoCard, LoadingState, MetaRow } from '../../components/ui';
 import { Screen } from '../../components/Screen';
-import { colors, space, type } from '../../theme';
-import type { PersonalBaseline } from '../../types';
-
-// mock — will be wired to a personal-baseline endpoint when available
-const MOCK: PersonalBaseline = { ready: true, sample_count: 62, median: 14, upper: 28, current: 18, updated_at: '2026-08-13' };
+import { valueLabel } from '../../lib/format';
+import { useActiveDeviceId, withDevice } from '../../lib/device';
+import { useRemote } from '../../lib/useRemote';
+import { colors, type } from '../../theme';
 
 export function PersonalBaselineScreen() {
-  if (!MOCK.ready) {
-    return (
-      <Screen title="Personal Baseline">
-        <EmptyState title="Not enough data yet" />
-      </Screen>
-    );
-  }
+  const activeDeviceId = useActiveDeviceId();
+  const { data, loading, error, noDevice, reload } = useRemote(
+    useCallback(() => withDevice(activeDeviceId, getPersonalBaseline), [activeDeviceId]),
+  );
+
   return (
     <Screen title="Personal Baseline" subtitle="ช่วงที่ระบบเรียนรู้จากข้อมูลของคุณ">
-      <InfoCard>
-        <View style={styles.band}>
-          <View style={styles.bandTrack} />
-          <View style={[styles.bandMarker, { left: `${Math.min(100, (MOCK.current! / MOCK.upper!) * 60)}%` }]} />
-        </View>
-        <MetaRow label="Current" value={`${MOCK.current} µg/m³`} />
-        <MetaRow label="Your typical range" value={`up to ${MOCK.upper} µg/m³`} />
-        <MetaRow label="Sample count" value={`${MOCK.sample_count}`} />
-        <MetaRow label="Last updated" value={MOCK.updated_at ?? '-'} />
-      </InfoCard>
-      <Text style={styles.note}>This baseline is a personal reference range — it is not a medical threshold.</Text>
+      {loading ? (
+        <LoadingState />
+      ) : error ? (
+        noDevice ? <EmptyState title="ยังไม่มีอุปกรณ์สำหรับแสดงข้อมูล" /> : <ErrorState reason="Could not load your baseline" onRetry={reload} />
+      ) : !data?.ready ? (
+        // Below the minimum sample count the engine refuses to personalize (§5.4) — say so
+        // instead of showing a range that isn't established yet.
+        <>
+          <EmptyState title="Not enough data yet — your baseline is still being learned" />
+          <Text style={styles.note}>{data?.sample_count ?? 0} readings collected so far.</Text>
+        </>
+      ) : (
+        <>
+          <InfoCard title="Your usual range">
+            <MetaRow label="Typical (median)" value={valueLabel(data.median, 'µg/m³')} />
+            <MetaRow label="Upper of your usual range" value={valueLabel(data.upper, 'µg/m³')} />
+            <MetaRow label="Latest reading" value={valueLabel(data.current, 'µg/m³')} />
+            <MetaRow label="Based on" value={`${data.sample_count} readings`} />
+          </InfoCard>
+          <Text style={styles.note}>
+            This range describes what your own sensor usually records. It is a personal reference
+            learned from your data — not a medical range and not a health threshold.
+          </Text>
+        </>
+      )}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  band: { height: 10, marginVertical: space.sm },
-  bandTrack: { height: 8, borderRadius: 4, backgroundColor: colors.divider },
-  bandMarker: { position: 'absolute', top: -3, width: 14, height: 14, borderRadius: 7, backgroundColor: colors.primary, borderWidth: 2, borderColor: '#fff' },
   note: { ...type.caption, color: colors.textMuted },
 });

@@ -60,6 +60,11 @@ class Reading:
     sensor_status: str = "OK"
     quality_score: float | None = None
     schema_version: str = "1.0"
+    # SGP30 (optional hardware) — additional environmental context ONLY. Never an input to
+    # Decision/EnvState/WatchStatus (§14 invariant: the decision engine stays PM2.5-driven).
+    tvoc: float | None = None             # Total VOC, ppb
+    eco2: float | None = None             # VOC-derived CO2-EQUIVALENT ESTIMATE, ppm — NOT a
+    # true CO2 measurement (the SCD40 measures real CO2).
 
 
 @dataclass

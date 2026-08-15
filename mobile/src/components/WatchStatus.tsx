@@ -2,12 +2,18 @@
  * The Hero Status card (Home/Destination) and the compact StatusBadge (lists).
  * Input is the closed `WatchStatus` union — "Safe" cannot be passed (TDD §7/§14).
  */
+import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { StyleSheet, Text, View } from 'react-native';
 import { colors, radius, shadow, space, statusBg, statusColor, statusCopy, type } from '../theme';
 import type { WatchStatus as Status } from '../types';
 
-const ICON: Record<Status, string> = { Normal: '✓', Caution: '!', High: '▲', 'No Data': '?' };
+const ICON: Record<Status, keyof typeof Ionicons.glyphMap> = {
+  Normal: 'checkmark-circle',
+  Caution: 'warning',
+  High: 'alert-circle',
+  'No Data': 'help-circle',
+};
 
 export function HeroStatusCard({ status, freshnessLabel, pm25 }: { status: Status; freshnessLabel?: string; pm25?: number | null }) {
   const color = statusColor(status);
@@ -20,7 +26,7 @@ export function HeroStatusCard({ status, freshnessLabel, pm25 }: { status: Statu
     >
       <View style={[styles.decorRing, { borderColor: color + '18' }]} />
       <View style={[styles.iconBadge, { backgroundColor: color }]}>
-        <Text style={styles.iconText}>{ICON[status]}</Text>
+        <Ionicons name={ICON[status]} size={26} color="#fff" />
       </View>
       <Text style={[styles.heroLabel, { color }]}>{status.toUpperCase()}</Text>
       <Text style={styles.heroDesc}>{statusCopy[status]}</Text>
@@ -46,7 +52,7 @@ export function StatusBadge({ status, subtitle }: { status: Status; subtitle?: s
     <View style={[styles.badge, shadow]}>
       <View style={[styles.badgeAccent, { backgroundColor: color }]} />
       <View style={[styles.badgeIcon, { backgroundColor: statusBg(status) }]}>
-        <Text style={[styles.badgeIconText, { color }]}>{ICON[status]}</Text>
+        <Ionicons name={ICON[status]} size={20} color={color} />
       </View>
       <View style={{ flex: 1 }}>
         <Text style={styles.label}>{status}</Text>

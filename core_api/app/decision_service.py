@@ -66,4 +66,10 @@ def evaluate_readings(
         baseline=baseline,
         exposure=exposure,
     )
-    return to_contract(event)
+    contract = to_contract(event)
+    contract["pm25"] = latest.pm25 if (readings and latest_quality.pm25_valid) else None
+    contract["temperature"] = latest.temperature if readings else None
+    contract["humidity"] = latest.humidity if readings else None
+    contract["tvoc"] = latest.tvoc if readings else None
+    contract["eco2"] = latest.eco2 if readings else None
+    return contract

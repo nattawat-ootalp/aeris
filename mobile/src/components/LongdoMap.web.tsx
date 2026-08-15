@@ -6,7 +6,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { colors, space, type } from '../theme';
 import type { NodeMarker } from '../types';
 
-export function LongdoMap({ markers }: { markers: NodeMarker[] }) {
+export function LongdoMap({ markers }: { markers: NodeMarker[]; center?: { lat: number; lon: number } | null }) {
   return (
     <View style={styles.wrap}>
       <Text style={styles.text}>Map preview is available on Android/iOS — {markers.length} node(s) nearby</Text>
