@@ -9,6 +9,7 @@ import { Buffer } from 'buffer';
 export const SERVICE_UUID = 'c1b0ae00-9e57-4a3d-9f2a-0e1a2b3c4d00';
 export const CHAR_TELEMETRY_UUID = 'c1b0ae01-9e57-4a3d-9f2a-0e1a2b3c4d01';
 export const CHAR_STATUS_UUID = 'c1b0ae02-9e57-4a3d-9f2a-0e1a2b3c4d02';
+export const CHAR_SOS_UUID = 'c1b0ae04-9e57-4a3d-9f2a-0e1a2b3c4d04';
 
 export interface PortableTelemetry {
   pm25?: number;
@@ -35,6 +36,13 @@ export interface PortableStatus {
   sensor_status?: 'OK' | 'WARMUP' | 'ERROR';
   fw?: string;
   sgp30?: 'OK' | 'WARMUP' | 'ERROR';
+}
+
+/** SOS characteristic payload. The device reports only that the button was pressed and when —
+ *  it carries no severity, classification or location (docs/ble-contract.md). */
+export interface PortableSos {
+  event: 'sos';
+  ts: number;
 }
 
 let manager: BleManager | null = null;
@@ -113,6 +121,7 @@ export async function connectAndSubscribe(
   onTelemetry: (t: PortableTelemetry) => void,
   onDisconnected: () => void,
   onStatus?: (s: PortableStatus) => void,
+  onSos?: (s: PortableSos) => void,
 ): Promise<Subscription> {
   const connected = await device.connect();
   // MTU defaults to 23 bytes (20-byte payload) which truncates the telemetry JSON —
@@ -141,6 +150,16 @@ export async function connectAndSubscribe(
       if (error || !char) return;
       const parsed = decode(char.value);
       if (parsed) onStatus(parsed as PortableStatus);
+    });
+  }
+
+  if (onSos) {
+    // Subscribed alongside telemetry so a button press reaches the app the moment it happens.
+    // Firmware emits one notification per press; the app decides what to record with it.
+    connected.monitorCharacteristicForService(SERVICE_UUID, CHAR_SOS_UUID, (error, char) => {
+      if (error || !char) return;
+      const parsed = decode(char.value);
+      if (parsed && parsed.event === 'sos') onSos(parsed as unknown as PortableSos);
     });
   }
 

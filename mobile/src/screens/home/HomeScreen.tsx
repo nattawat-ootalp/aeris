@@ -4,15 +4,16 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { getDeviceDecision } from '../../api/client';
+import { getDeviceDecision, getForecast, getRisk } from '../../api/client';
 import { InfoCard, LoadingState } from '../../components/ui';
 import { HeroStatusCard } from '../../components/WatchStatus';
 import { Screen } from '../../components/Screen';
 import { freshnessLabel } from '../../lib/format';
 import { useActiveDeviceId, useThresholds, watchStatusFor, withDevice } from '../../lib/device';
+import { ForecastCard, RiskCard } from '../../components/RiskCards';
 import { usePortable } from '../../state/portable';
 import { colors, radius, space, statusColor, type } from '../../theme';
-import { toWatchStatus, type DecisionEvent, type WatchStatus } from '../../types';
+import { toWatchStatus, type DecisionEvent, type Forecast as ForecastType, type RiskScore, type WatchStatus } from '../../types';
 import type { HomeStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<HomeStackParamList, 'Home'>;
@@ -22,6 +23,8 @@ export function HomeScreen({ navigation }: Props) {
   const [remote, setRemote] = useState<{ loading: boolean; error?: string; data?: DecisionEvent }>({ loading: true });
   const activeDeviceId = useActiveDeviceId();
   const thresholds = useThresholds();
+  const [risk, setRisk] = useState<RiskScore | null>(null);
+  const [forecast, setForecast] = useState<ForecastType | null>(null);
 
   const load = useCallback(() => {
     setRemote((s) => ({ ...s, loading: true }));
@@ -32,6 +35,19 @@ export function HomeScreen({ navigation }: Props) {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
   useEffect(() => { load(); }, [load]);
+
+  // Risk and projection are independent of the current-decision call: either can be absent
+  // (unauthenticated, or too little data) without blocking the rest of the screen.
+  useEffect(() => {
+    let cancelled = false;
+    withDevice(activeDeviceId, getRisk)
+      .then((r) => { if (!cancelled) setRisk(r); })
+      .catch(() => { if (!cancelled) setRisk(null); });
+    withDevice(activeDeviceId, (id) => getForecast(id))
+      .then((f) => { if (!cancelled) setForecast(f); })
+      .catch(() => { if (!cancelled) setForecast(null); });
+    return () => { cancelled = true; };
+  }, [activeDeviceId]);
 
   const usingLocal = bleState === 'connected' && telemetry != null;
   // A live local reading is labelled with the backend's own thresholds; an unusable PM
@@ -113,6 +129,17 @@ export function HomeScreen({ navigation }: Props) {
         </InfoCard>
       ) : null}
 
+      <RiskCard risk={risk} />
+      <ForecastCard forecast={forecast} />
+
+      <Pressable
+        onPress={() => navigation.getParent()?.navigate('Sos' as never)}
+        style={({ pressed }) => [styles.sosBtn, pressed ? { opacity: 0.85 } : null]}
+      >
+        <Ionicons name="alert-circle-outline" size={20} color={colors.high} />
+        <Text style={styles.sosText}>SOS — บันทึกเหตุการณ์และดูแผนของคุณ</Text>
+      </Pressable>
+
       <View style={styles.quickActions}>
         <QuickAction icon="trending-up-outline" label="View Exposure" onPress={() => navigation.navigate('CurrentExposure')} />
         <QuickAction icon="location-outline" label="Check Destination" onPress={() => navigation.getParent()?.navigate('ExploreTab' as never)} />
@@ -136,6 +163,16 @@ function QuickAction({ icon, label, onPress }: { icon: keyof typeof Ionicons.gly
 }
 
 const styles = StyleSheet.create({
+  sosBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: space.sm,
+    backgroundColor: colors.highSoft,
+    borderRadius: radius.lg,
+    paddingVertical: space.md,
+  },
+  sosText: { ...type.bodyStrong, color: colors.high },
   bellBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   reasonRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: 3 },
   reasonDot: { width: 6, height: 6, borderRadius: 3 },

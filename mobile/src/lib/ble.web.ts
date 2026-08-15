@@ -6,6 +6,7 @@
 export const SERVICE_UUID = 'c1b0ae00-9e57-4a3d-9f2a-0e1a2b3c4d00';
 export const CHAR_TELEMETRY_UUID = 'c1b0ae01-9e57-4a3d-9f2a-0e1a2b3c4d01';
 export const CHAR_STATUS_UUID = 'c1b0ae02-9e57-4a3d-9f2a-0e1a2b3c4d02';
+export const CHAR_SOS_UUID = 'c1b0ae04-9e57-4a3d-9f2a-0e1a2b3c4d04';
 
 export interface PortableTelemetry {
   pm25?: number;
@@ -29,6 +30,11 @@ export interface PortableStatus {
   sensor_status?: 'OK' | 'WARMUP' | 'ERROR';
   fw?: string;
   sgp30?: 'OK' | 'WARMUP' | 'ERROR';
+}
+
+export interface PortableSos {
+  event: 'sos';
+  ts: number;
 }
 
 export type ScanFailureReason = 'permission-denied' | 'bluetooth-off' | 'scan-error';

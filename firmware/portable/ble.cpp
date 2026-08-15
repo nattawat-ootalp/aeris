@@ -8,6 +8,7 @@ static NimBLEServer* server = nullptr;
 static NimBLECharacteristic* telemetryChar = nullptr;
 static NimBLECharacteristic* statusChar = nullptr;
 static NimBLECharacteristic* commandChar = nullptr;
+static NimBLECharacteristic* sosChar = nullptr;
 static bool connected = false;
 
 class ServerCallbacks : public NimBLEServerCallbacks {
@@ -60,6 +61,9 @@ void initBLE() {
   commandChar = svc->createCharacteristic(
       BLE_CHAR_COMMAND_UUID, NIMBLE_PROPERTY::WRITE);
   commandChar->setCallbacks(new CommandCallbacks());
+  // SOS: notify-only. The device reports a button press; it never decides what the press means.
+  sosChar = svc->createCharacteristic(
+      BLE_CHAR_SOS_UUID, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
 
   svc->start();
 
@@ -123,4 +127,51 @@ void bleNotifyStatus(int battery_pct, const char* sensor_status, const char* sgp
   Serial.printf("[BLE] status (%u B): %s\n", (unsigned)out.length(), out.c_str());
   statusChar->setValue(out.c_str());
   if (connected) statusChar->notify();
+}
+
+void bleNotifySos(uint32_t press_ts_sec) {
+  // Minimal payload on purpose: the fact of the press and when it happened. No severity, no
+  // classification, no location — the phone owns location under the user's consent setting
+  // (TDD §9), and no part of the system judges whether this is a medical emergency.
+  StaticJsonDocument<96> doc;
+  doc["event"] = "sos";
+  doc["ts"] = press_ts_sec;
+  String out;
+  serializeJson(doc, out);
+  Serial.printf("[BLE] SOS (%u B): %s
+", (unsigned)out.length(), out.c_str());
+  if (sosChar == nullptr) return;
+  sosChar->setValue(out.c_str());
+  // Value is set even when disconnected so a phone that connects later can READ the last
+  // event; the notify only fires for a phone that is already listening.
+  if (connected) sosChar->notify();
+}
+
+bool sosButtonPressed() {
+#ifdef SOS_BUTTON_PIN
+  // Active-low button with an internal pull-up, debounced by requiring the level to hold.
+  // Edge-triggered: one press produces exactly one event, however long the button is held.
+  static bool initialised = false;
+  static bool wasDown = false;
+  static unsigned long downSince = 0;
+  if (!initialised) {
+    pinMode(SOS_BUTTON_PIN, INPUT_PULLUP);
+    initialised = true;
+  }
+  bool down = (digitalRead(SOS_BUTTON_PIN) == LOW);
+  unsigned long now = millis();
+  if (down && !wasDown) {
+    downSince = now;
+    wasDown = true;
+    return false;
+  }
+  if (down && wasDown && downSince != 0 && (now - downSince) >= SOS_BUTTON_HOLD_MS) {
+    downSince = 0;          // fire once per press, not repeatedly while held
+    return true;
+  }
+  if (!down) wasDown = false;
+  return false;
+#else
+  return false;             // no SOS button wired on this build
+#endif
 }

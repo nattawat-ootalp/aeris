@@ -5,6 +5,7 @@ import {
   connectAndSubscribe,
   disconnect,
   scanForPortables,
+  type PortableSos,
   type PortableStatus,
   type PortableTelemetry,
   type ScanFailureReason,
@@ -21,6 +22,10 @@ interface PortableCtx {
   /** Device health (firmware version, VOC-chip state) from the status characteristic. */
   status: PortableStatus | null;
   lastSeenAt: number | null;
+  /** Most recent SOS press forwarded from the portable's button, or null. The provider only
+   *  reports it — recording and the user's consent settings are handled by the SOS screen. */
+  lastSos: PortableSos | null;
+  clearSos: () => void;
   scanFailure: ScanFailureReason | null;
   startPairing: () => void;
   stopPairing: () => void;
@@ -36,6 +41,7 @@ export function PortableProvider({ children }: { children: ReactNode }) {
   const [telemetry, setTelemetry] = useState<PortableTelemetry | null>(null);
   const [status, setStatus] = useState<PortableStatus | null>(null);
   const [lastSeenAt, setLastSeenAt] = useState<number | null>(null);
+  const [lastSos, setLastSos] = useState<PortableSos | null>(null);
   const [scanFailure, setScanFailure] = useState<ScanFailureReason | null>(null);
   const deviceRef = useRef<Device | null>(null);
   const stopScanRef = useRef<() => void>(() => {});
@@ -90,6 +96,7 @@ export function PortableProvider({ children }: { children: ReactNode }) {
                 fw_version: s.fw,
               }).catch(() => {});
             },
+            (sos) => setLastSos(sos),
           );
           setState('connected');
           // Register on connect even if the status characteristic never answers, so the
@@ -114,6 +121,8 @@ export function PortableProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const clearSos = useCallback(() => setLastSos(null), []);
+
   const stopPairing = useCallback(() => {
     stopScanRef.current();
     if (state === 'scanning') setState('disconnected');
@@ -130,7 +139,7 @@ export function PortableProvider({ children }: { children: ReactNode }) {
 
   return (
     <Ctx.Provider
-      value={{ state, deviceName, deviceId, telemetry, status, lastSeenAt, scanFailure, startPairing, stopPairing, disconnectDevice }}
+      value={{ state, deviceName, deviceId, telemetry, status, lastSeenAt, lastSos, clearSos, scanFailure, startPairing, stopPairing, disconnectDevice }}
     >
       {children}
     </Ctx.Provider>

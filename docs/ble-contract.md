@@ -16,6 +16,7 @@ Portable → BLE → phone (gateway) → HTTPS `/ingest/portable` → backend. K
 | Telemetry | `c1b0ae01-9e57-4a3d-9f2a-0e1a2b3c4d01` | Notify + Read | JSON (below), pushed every 5 s (interval BLE, §3.2) |
 | Device status | `c1b0ae02-9e57-4a3d-9f2a-0e1a2b3c4d02` | Notify + Read | JSON `{"battery":82,"sensor_status":"OK","fw":"1.0.0","sgp30":"OK"}` |
 | Command | `c1b0ae03-9e57-4a3d-9f2a-0e1a2b3c4d03` | Write | JSON `{"cmd":"interval","sec":5}` \| `{"cmd":"identify"}` |
+| SOS | `c1b0ae04-9e57-4a3d-9f2a-0e1a2b3c4d04` | Notify + Read | JSON `{"event":"sos","ts":1755090000}` — emitted once per button press |
 
 ### Telemetry JSON (Aeris data contract §4, minus device_id — BLE already identifies the device)
 ```json
@@ -45,8 +46,33 @@ Portable → BLE → phone (gateway) → HTTPS `/ingest/portable` → backend. K
 ```
 - `sgp30`: `OK` | `WARMUP` | `ERROR` — SGP30 chip health, separate from `sensor_status` (which stays PM-only). Firmware cannot distinguish "still warming up" from "chip not found" via the driver alone, so it uses a boot-window heuristic: not-ready within the first 20 s after boot reports `WARMUP`; not-ready after that (including a mid-run I2C-recovery re-warmup) reports `ERROR`. This means a bus-recovery event can under-report as `ERROR` instead of `WARMUP` — treat `ERROR` as "no current SGP30 data", not necessarily "hardware fault".
 
+### SOS characteristic
+
+```json
+{"event":"sos","ts":1755090000}
+```
+
+The portable reports **only that the user pressed the button**, and when. It deliberately
+carries no severity, no classification and no location:
+
+- the device cannot assess a medical situation and must never appear to (TDD §1.2, §14);
+- location belongs to the phone, which holds the user's `location_sharing` consent. The
+  firmware has no GPS and no consent state, so it never sends coordinates;
+- one press produces exactly one notification, however long the button is held
+  (`SOS_BUTTON_HOLD_MS` debounce). Holding does not escalate anything.
+
+The characteristic value is also set while disconnected, so a phone that connects afterwards
+can READ the last event rather than losing it. Builds with no button wired leave
+`SOS_BUTTON_PIN` undefined and never emit this event.
+
+On receiving it the phone: records the event via `POST /sos` (which applies the user's
+location consent server-side), shows the user's own action plan, and shows the contacts the
+user marked `notify_on_sos`. **Nothing is sent to anyone automatically.**
+
 ## Phone gateway responsibilities
 1. Show live telemetry from the Notify characteristic immediately (local, works with no internet).
+   Subscribe to the SOS characteristic at the same time — an SOS raised while the app is in the
+   background must still reach `POST /sos`.
 2. Re-attach `device_id` (the paired device's stable id) + ISO timestamp and POST to `/ingest/portable` for history/decision.
 3. On disconnect: show **No Data / reconnecting**, never the last value as "current".
 

@@ -151,6 +151,83 @@ export interface SymptomEventInput {
   severity: Severity;
   started_at: string; // ISO
   note?: string;
+  /** The user reporting they used their inhaler. Diary context only — the app never advises
+   *  for or against using it. */
+  inhaler_used?: boolean;
+}
+
+/** Systemic risk indicator (§5.9). `score` is null whenever `decision` is 'NO_DATA' — there
+ *  is no zero for "unknown", because a zero reads as a reassurance the system cannot give. */
+export interface RiskScore {
+  device_id: string;
+  score: number | null;
+  decision: DecisionEvent['decision'];
+  watch_label: WatchStatus;
+  confidence: 'LOW' | 'MEDIUM' | 'HIGH';
+  reason_codes: string[];
+  sample_size: number;
+  components: Record<string, number>;
+  freshness_sec: number | null;
+  note: string;
+}
+
+/** Short-horizon projection of environmental PM2.5 (§5.10). Never a symptom prediction. */
+export interface Forecast {
+  device_id: string;
+  available: boolean;
+  horizon_sec: number;
+  projected_pm25: number | null;
+  uncertainty: number | null;
+  trend_per_hour: number | null;
+  decision: DecisionEvent['decision'];
+  watch_label: WatchStatus;
+  confidence: 'LOW' | 'MEDIUM' | 'HIGH';
+  reason_codes: string[];
+  sample_size: number;
+  note: string;
+}
+
+/** The care plan the user or their clinician wrote. Aeris stores and displays it and never
+ *  authors, reorders or completes a step. */
+export interface ActionPlan {
+  exists: boolean;
+  author: 'user' | 'clinician';
+  clinician_name: string | null;
+  reviewed_at: string | null;
+  normal_steps: string[];
+  caution_steps: string[];
+  high_steps: string[];
+  emergency_steps: string[];
+  notes: string | null;
+}
+
+export interface EmergencyContact {
+  id: string;
+  name: string;
+  phone: string | null;
+  relationship: string | null;
+  notify_on_sos: boolean;
+  sort_order: number;
+}
+
+export interface SosEvent {
+  id?: string;
+  source: 'app' | 'portable';
+  occurred_at: string;
+  lat: number | null;
+  lon: number | null;
+  pm25?: number | null;
+  notified_contacts: number;
+}
+
+export interface SosResult {
+  recorded: boolean;
+  event: SosEvent;
+  location_stored: boolean;
+  location_sharing: 'none' | 'coarse' | 'precise';
+  contacts: EmergencyContact[];
+  action_plan: ActionPlan;
+  note: string;
 }
 
 export interface PersonalBaseline {

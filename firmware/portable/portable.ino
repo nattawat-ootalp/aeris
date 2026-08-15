@@ -77,6 +77,13 @@ void loop() {
     bleNotifyTelemetry(latestData, latestData.pms_valid, BATTERY_PLACEHOLDER_PCT, q);
   }
 
+  // SOS button: report the press immediately, ahead of the scheduled notifies. The device
+  // makes no judgement about the press — the phone records it under the user's settings.
+  if (sosButtonPressed()) {
+    Serial.println("[System] SOS button pressed — notifying phone");
+    bleNotifySos((uint32_t)(millis() / 1000));
+  }
+
   if (now - lastStatusNotify >= STATUS_NOTIFY_INTERVAL_MS) {
     lastStatusNotify = now;
     const char* status = latestData.pms_valid ? "OK" : "ERROR";

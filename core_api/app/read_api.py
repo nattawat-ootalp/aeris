@@ -14,8 +14,11 @@ from pydantic import BaseModel
 
 from intelligence.baseline import build_baseline
 from intelligence.config import CONFIG
+from intelligence.exposure import aggregate_exposure
 from intelligence.parsing import parse_timestamp
 from intelligence.pattern import detect_pattern
+from intelligence.predict import forecast_pm25
+from intelligence.risk import compute_risk
 
 from . import analytics, repo
 from .decision_service import evaluate_readings
@@ -24,6 +27,14 @@ from .influx_query import now_utc
 from .security import require_user
 
 router = APIRouter(tags=["core"])
+
+# Decision -> the closed watch vocabulary (TDD §7). "SAFE" does not exist by construction.
+WATCH_BY_DECISION = {
+    "NORMAL": "Normal",
+    "CAUTION": "Caution",
+    "HIGH": "High",
+    "NO_DATA": "No Data",
+}
 
 
 @router.get("/nodes/{device_id}/telemetry")
@@ -107,6 +118,9 @@ class SymptomPayload(BaseModel):
     note: str | None = None
     timestamp: str | None = None
     started_at: str | None = None
+    # The user reporting that they used their inhaler. Recorded as diary context only —
+    # Aeris never advises for or against using it (TDD §1.2/§14).
+    inhaler_used: bool = False
 
 
 @router.post("/symptoms")
@@ -133,6 +147,8 @@ def log_symptom(payload: SymptomPayload, user: dict = Depends(require_user)) -> 
             }
             if payload.note is not None:
                 row["note"] = payload.note
+            if payload.inhaler_used:
+                row["inhaler_used"] = True
             rows.append(row)
     else:
         row = {
@@ -141,6 +157,8 @@ def log_symptom(payload: SymptomPayload, user: dict = Depends(require_user)) -> 
         }
         if payload.note is not None:
             row["note"] = payload.note
+        if payload.inhaler_used:
+            row["inhaler_used"] = True
         rows.append(row)
 
     repo.store_symptom(sub, rows)
@@ -313,3 +331,230 @@ def register_device(payload: DevicePayload, user: dict = Depends(require_user)) 
         raise HTTPException(400, "kind must be portable|station")
     rows = repo.upsert_device(sub, payload.model_dump(exclude_none=True))
     return {"registered": True, "device": rows[0] if rows else None}
+
+
+# ── Personalized risk score (§5.9) ───────────────────────────────────────────
+@router.get("/devices/{device_id}/risk")
+def device_risk(
+    device_id: str,
+    hours: int = Query(6, ge=1, le=72),
+    user: dict = Depends(require_user),
+) -> dict:
+    """One systemic risk indicator built from this user's own exposure and history.
+
+    Requires auth because it reads private symptom history. When the current data cannot pass
+    the §5.1 gate the answer is NO_DATA with reasons — never a low score.
+    """
+    sub = user.get("sub")
+    if not sub:
+        raise HTTPException(401, "token has no subject")
+
+    now = now_utc()
+    readings = repo.get_recent_readings(device_id, hours=hours)
+    quality = analytics.data_quality(readings, now)
+    points = analytics.valid_points(readings)
+    window = aggregate_exposure(points, CONFIG)
+    baseline = build_baseline(repo.get_baseline_values(device_id))
+    symptom_rows = repo.get_symptoms(sub, now - timedelta(seconds=CONFIG.risk_history_window_sec))
+
+    result = compute_risk(
+        now=now,
+        usable=bool(quality.get("usable")),
+        freshness_sec=quality.get("freshness_sec"),
+        window=window,
+        baseline=baseline,
+        symptom_times=_symptom_times(symptom_rows),
+        quality_reasons=list(quality.get("reasons") or []),
+    )
+    return {
+        "device_id": device_id,
+        "score": result.score,
+        "decision": str(result.decision),
+        "watch_label": WATCH_BY_DECISION[str(result.decision)],
+        "confidence": str(result.confidence),
+        "reason_codes": result.reason_codes,
+        "sample_size": result.sample_size,
+        "components": result.components,
+        "freshness_sec": quality.get("freshness_sec"),
+        "note": result.note,
+    }
+
+
+# ── Predictive alert (§5.10) ─────────────────────────────────────────────────
+@router.get("/devices/{device_id}/forecast")
+def device_forecast(
+    device_id: str,
+    horizon_min: int = Query(20, ge=5, le=60),
+) -> dict:
+    """Short-horizon projection of environmental PM2.5 for this device.
+
+    Public like the other environmental reads — it contains no health data. Returns
+    ``available: false`` with a reason whenever the recent series cannot support a projection.
+    """
+    now = now_utc()
+    readings = repo.get_recent_readings(device_id, hours=2)
+    f = forecast_pm25(
+        analytics.valid_points(readings), now=now, horizon_sec=horizon_min * 60, cfg=CONFIG
+    )
+    return {
+        "device_id": device_id,
+        "available": f.available,
+        "horizon_sec": f.horizon_sec,
+        "projected_pm25": f.projected_pm25,
+        "uncertainty": f.uncertainty,
+        "trend_per_hour": f.trend_per_hour,
+        "decision": str(f.decision),
+        "watch_label": WATCH_BY_DECISION[str(f.decision)],
+        "confidence": str(f.confidence),
+        "reason_codes": f.reason_codes,
+        "sample_size": f.sample_size,
+        "note": f.note,
+    }
+
+
+# ── Asthma action plan (user/clinician authored) ─────────────────────────────
+class ActionPlanPayload(BaseModel):
+    author: str | None = None
+    clinician_name: str | None = None
+    reviewed_at: str | None = None
+    normal_steps: list[str] | None = None
+    caution_steps: list[str] | None = None
+    high_steps: list[str] | None = None
+    emergency_steps: list[str] | None = None
+    notes: str | None = None
+
+
+@router.get("/me/action-plan")
+def get_my_action_plan(user: dict = Depends(require_user)) -> dict:
+    sub = user.get("sub")
+    if not sub:
+        raise HTTPException(401, "token has no subject")
+    return repo.get_action_plan(sub)
+
+
+@router.put("/me/action-plan")
+def put_action_plan(payload: ActionPlanPayload, user: dict = Depends(require_user)) -> dict:
+    """Store the plan exactly as the user or their clinician wrote it.
+
+    Aeris never authors, reorders, or completes care steps — it is storage and display only
+    (TDD §1.2/§14), so the payload is written through unchanged apart from the author check.
+    """
+    sub = user.get("sub")
+    if not sub:
+        raise HTTPException(401, "token has no subject")
+    changes = payload.model_dump(exclude_none=True)
+    if changes.get("author") not in (None, "user", "clinician"):
+        raise HTTPException(400, "author must be user|clinician")
+    if not changes:
+        return repo.get_action_plan(sub)
+    return repo.upsert_action_plan(sub, changes)
+
+
+# ── Emergency contacts + SOS flow ────────────────────────────────────────────
+class ContactPayload(BaseModel):
+    name: str
+    phone: str | None = None
+    relationship: str | None = None
+    notify_on_sos: bool = True
+    sort_order: int = 0
+
+
+@router.get("/me/contacts")
+def my_contacts(user: dict = Depends(require_user)) -> dict:
+    sub = user.get("sub")
+    if not sub:
+        raise HTTPException(401, "token has no subject")
+    return {"contacts": repo.list_contacts(sub)}
+
+
+@router.post("/me/contacts")
+def add_contact(payload: ContactPayload, user: dict = Depends(require_user)) -> dict:
+    sub = user.get("sub")
+    if not sub:
+        raise HTTPException(401, "token has no subject")
+    rows = repo.add_contact(sub, payload.model_dump(exclude_none=True))
+    return {"added": True, "contact": rows[0] if rows else None}
+
+
+@router.delete("/me/contacts/{contact_id}")
+def remove_contact(contact_id: str, user: dict = Depends(require_user)) -> dict:
+    sub = user.get("sub")
+    if not sub:
+        raise HTTPException(401, "token has no subject")
+    repo.delete_contact(sub, contact_id)
+    return {"deleted": True, "id": contact_id}
+
+
+class SosPayload(BaseModel):
+    source: str = "app"
+    device_id: str | None = None
+    occurred_at: str | None = None
+    lat: float | None = None
+    lon: float | None = None
+    location_accuracy_m: float | None = None
+    note: str | None = None
+
+
+@router.post("/sos")
+def raise_sos(payload: SosPayload, user: dict = Depends(require_user)) -> dict:
+    """Record an SOS the user raised, and return their own plan and contacts.
+
+    Two rules are enforced here rather than trusted to the client:
+      * location is stored only if the user's privacy setting allows it — 'none' drops the
+        coordinates entirely, 'coarse' rounds them to a ~1 km grid before storage;
+      * Aeris makes no judgement about the event and contacts nobody automatically. It returns
+        the contacts the user marked notify_on_sos so the user can place the call themselves.
+    """
+    sub = user.get("sub")
+    if not sub:
+        raise HTTPException(401, "token has no subject")
+    if payload.source not in ("app", "portable"):
+        raise HTTPException(400, "source must be app|portable")
+
+    privacy = repo.get_privacy(sub)
+    sharing = privacy.get("location_sharing", "none")
+    lat, lon, accuracy = payload.lat, payload.lon, payload.location_accuracy_m
+    if sharing == "none":
+        lat = lon = accuracy = None
+    elif sharing == "coarse" and lat is not None and lon is not None:
+        lat, lon = round(lat, 2), round(lon, 2)
+        accuracy = None
+
+    event = {
+        "source": payload.source,
+        "occurred_at": payload.occurred_at or now_utc().isoformat(),
+        "lat": lat,
+        "lon": lon,
+        "location_accuracy_m": accuracy,
+    }
+    if payload.device_id:
+        event["device_id"] = payload.device_id
+        latest = repo.influx_query.latest_point(payload.device_id)
+        if latest and latest.get("pm2_5") is not None:
+            event["pm25"] = latest["pm2_5"]
+    if payload.note is not None:
+        event["note"] = payload.note
+
+    contacts = [c for c in repo.list_contacts(sub) if c.get("notify_on_sos")]
+    event["notified_contacts"] = 0                   # nothing is sent on the user's behalf
+    rows = repo.store_sos(sub, event)
+    return {
+        "recorded": True,
+        "event": rows[0] if rows else event,
+        "location_stored": lat is not None,
+        "location_sharing": sharing,
+        "contacts": contacts,
+        "action_plan": repo.get_action_plan(sub),
+        "note": (
+            "Aeris recorded this event and is showing your own plan and contacts. It does not "
+            "assess medical emergencies and does not contact anyone for you."
+        ),
+    }
+
+
+@router.get("/me/sos")
+def my_sos_events(limit: int = Query(20, ge=1, le=100), user: dict = Depends(require_user)) -> dict:
+    sub = user.get("sub")
+    if not sub:
+        raise HTTPException(401, "token has no subject")
+    return {"events": repo.get_sos_events(sub, limit)}

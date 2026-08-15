@@ -25,6 +25,7 @@ export function SymptomEventScreen({ navigation }: Props) {
   const [selected, setSelected] = useState<Set<SymptomType>>(new Set());
   const [severity, setSeverity] = useState<Severity>('mild');
   const [note, setNote] = useState('');
+  const [inhalerUsed, setInhalerUsed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -43,6 +44,7 @@ export function SymptomEventScreen({ navigation }: Props) {
         severity,
         started_at: new Date().toISOString(),
         note: note || undefined,
+        inhaler_used: inhalerUsed,
       });
       if (severity === 'severe') {
         // ExposureStack -> Tab navigator -> RootStack (two levels up)
@@ -52,6 +54,7 @@ export function SymptomEventScreen({ navigation }: Props) {
       setMsg('Saved. Environment context has been attached — this does not identify a cause.');
       setSelected(new Set());
       setNote('');
+      setInhalerUsed(false);
     } catch (e) {
       setMsg(`Could not save: ${String(e)}`);
     } finally {
@@ -67,6 +70,14 @@ export function SymptomEventScreen({ navigation }: Props) {
             <Chip key={s.key} label={s.label} selected={selected.has(s.key)} onPress={() => toggle(s.key)} />
           ))}
         </View>
+      </InfoCard>
+      <InfoCard title="Inhaler">
+        <View style={styles.chipRow}>
+          <Chip label="ใช้ยาสูดพ่น" selected={inhalerUsed} onPress={() => setInhalerUsed(!inhalerUsed)} />
+        </View>
+        <Text style={styles.inhalerNote}>
+          บันทึกไว้เป็นข้อมูลประกอบเท่านั้น Aeris ไม่ได้แนะนำให้ใช้หรือไม่ใช้ยา
+        </Text>
       </InfoCard>
       <InfoCard title="Severity">
         <View style={styles.chipRow}>
@@ -87,6 +98,7 @@ export function SymptomEventScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+  inhalerNote: { ...type.caption, color: colors.textMuted, marginTop: space.sm },
   note: { borderWidth: 1, borderColor: colors.border, borderRadius: 12, color: colors.text, padding: space.sm, minHeight: 72, backgroundColor: colors.surface },
   msg: { ...type.secondary, color: colors.textMuted },
   disclaimer: { ...type.caption, color: colors.textMuted, fontStyle: 'italic' },

@@ -5,17 +5,23 @@
  */
 import { ensureSessionToken } from '../lib/supabase';
 import type {
+  ActionPlan,
   DailySummary,
   DataQuality,
   DecisionEvent,
   DestinationAssessment,
   DeviceRecord,
   ExposureEventDetail,
+  EmergencyContact,
   ExposureTimelineEvent,
+  Forecast,
   NodeMarker,
   PersonalBaseline,
   PersonalPattern,
   PrivacySettings,
+  RiskScore,
+  SosEvent,
+  SosResult,
   SymptomEventInput,
   Thresholds,
   WeeklyHistory,
@@ -56,6 +62,16 @@ async function sendJsonAuthed<T>(method: 'POST' | 'PUT', path: string, body: unk
 
 async function postJsonAuthed<T>(path: string, body: unknown): Promise<T> {
   return sendJsonAuthed('POST', path, body);
+}
+
+async function deleteAuthed<T>(path: string): Promise<T> {
+  const token = await ensureSessionToken();
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: 'DELETE',
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  });
+  if (!res.ok) throw new Error(`DELETE ${path} -> ${res.status}`);
+  return (await res.json()) as T;
 }
 
 export async function getHealth(): Promise<{ status: string }> {
@@ -195,4 +211,62 @@ export async function registerDevice(device: {
   fw_version?: string;
 }): Promise<{ registered: boolean; device: DeviceRecord | null }> {
   return postJsonAuthed('/me/devices', device);
+}
+
+// ── Personalized risk + predictive alert ──
+/** Reads private symptom history, so this call is authenticated. A NO_DATA answer carries a
+ *  null score — never render a missing measurement as a low one. */
+export async function getRisk(deviceId: string, hours = 6): Promise<RiskScore> {
+  return getJsonAuthed(`${dev(deviceId)}/risk?hours=${hours}`);
+}
+
+/** Environmental projection only; contains no health data, so it needs no auth. */
+export async function getForecast(deviceId: string, horizonMin = 20): Promise<Forecast> {
+  return getJson(`${dev(deviceId)}/forecast?horizon_min=${horizonMin}`);
+}
+
+// ── Asthma action plan (user/clinician authored) ──
+export async function getActionPlan(): Promise<ActionPlan> {
+  return getJsonAuthed('/me/action-plan');
+}
+
+export async function saveActionPlan(plan: Partial<ActionPlan>): Promise<ActionPlan> {
+  return sendJsonAuthed('PUT', '/me/action-plan', plan);
+}
+
+// ── Emergency contacts ──
+export async function getContacts(): Promise<{ contacts: EmergencyContact[] }> {
+  return getJsonAuthed('/me/contacts');
+}
+
+export async function addContact(contact: {
+  name: string;
+  phone?: string;
+  relationship?: string;
+  notify_on_sos?: boolean;
+}): Promise<{ added: boolean; contact: EmergencyContact | null }> {
+  return postJsonAuthed('/me/contacts', contact);
+}
+
+export async function deleteContact(id: string): Promise<{ deleted: boolean }> {
+  return deleteAuthed(`/me/contacts/${encodeURIComponent(id)}`);
+}
+
+// ── SOS ──
+/** Record an SOS the user raised. Coordinates are passed only when the caller already has
+ *  them; the backend still re-applies the user's location-consent setting before storing. */
+export async function raiseSos(input: {
+  source?: 'app' | 'portable';
+  device_id?: string;
+  occurred_at?: string;
+  lat?: number;
+  lon?: number;
+  location_accuracy_m?: number;
+  note?: string;
+}): Promise<SosResult> {
+  return postJsonAuthed('/sos', input);
+}
+
+export async function getSosEvents(limit = 20): Promise<{ events: SosEvent[] }> {
+  return getJsonAuthed(`/me/sos?limit=${limit}`);
 }

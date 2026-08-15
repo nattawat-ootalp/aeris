@@ -71,6 +71,31 @@ class IntelligenceConfig:
     pattern_min_samples: int = _i("PATTERN_MIN_SAMPLES", 20)
     pattern_window_sec: float = 6 * 3600.0
 
+    # ── Personalized risk score (§5.9) — engineering weights, NOT medical weighting ──
+    # Environment dominates on purpose: it is the only directly measured input. Personal
+    # history refines the score within the band the environment already justifies.
+    risk_w_environmental: float = 0.40
+    risk_w_duration: float = 0.25
+    risk_w_baseline: float = 0.15
+    risk_w_history: float = 0.10
+    risk_w_temporal: float = 0.10
+    risk_caution_score: float = _f("RISK_CAUTION_SCORE", 40.0)
+    risk_high_score: float = _f("RISK_HIGH_SCORE", 70.0)
+    risk_min_samples: int = _i("RISK_MIN_SAMPLES", 10)
+    risk_history_window_sec: float = 7 * 24 * 3600.0
+    risk_history_saturation_events: int = 5
+    risk_temporal_window_hours: float = 2.0
+    risk_temporal_min_events: int = 5
+
+    # ── Predictive alert (§5.10) ──
+    # 20 min sits inside the 15–30 min horizon the design asks for.
+    forecast_horizon_sec: float = _f("FORECAST_HORIZON_SEC", 20 * 60)
+    forecast_window_sec: float = _f("FORECAST_WINDOW_SEC", 60 * 60)
+    forecast_min_samples: int = _i("FORECAST_MIN_SAMPLES", 6)
+    forecast_confident_samples: int = _i("FORECAST_CONFIDENT_SAMPLES", 12)
+    # |trend| below this is reported as steady rather than rising/falling
+    forecast_rising_per_hour: float = 5.0
+
     # ── Persistence / hysteresis / cooldown (§5.7) ──
     persistence_samples: int = 3         # consecutive elevated samples before escalating
     persistence_window_sec: float = 600.0

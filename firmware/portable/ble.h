@@ -10,6 +10,7 @@
 #define BLE_CHAR_TELEMETRY_UUID "c1b0ae01-9e57-4a3d-9f2a-0e1a2b3c4d01"
 #define BLE_CHAR_STATUS_UUID    "c1b0ae02-9e57-4a3d-9f2a-0e1a2b3c4d02"
 #define BLE_CHAR_COMMAND_UUID   "c1b0ae03-9e57-4a3d-9f2a-0e1a2b3c4d03"
+#define BLE_CHAR_SOS_UUID       "c1b0ae04-9e57-4a3d-9f2a-0e1a2b3c4d04"
 
 void initBLE();
 // Push one telemetry sample. sensorsValid = data.pms_valid && data.scd40_valid (PM/T/RH ready).
@@ -20,6 +21,14 @@ void bleNotifyTelemetry(const SensorData& data, bool sensorsValid, int battery_p
 // sensor_status: PM validity only ("OK"/"ERROR"). sgp30_status: "OK"|"WARMUP"|"ERROR",
 // see portable.ino's sgp30StatusString().
 void bleNotifyStatus(int battery_pct, const char* sensor_status, const char* sgp30_status, const char* fw_version);
+// Emergency event raised by the user pressing the SOS button on the portable.
+// The firmware only reports THAT the button was pressed — it never assesses the situation.
+// The phone is what records the event, applies the user's consent settings and shows their
+// own action plan (see docs/ble-contract.md, "SOS").
+void bleNotifySos(uint32_t press_ts_sec);
+// Debounced read of the SOS button on SOS_BUTTON_PIN. Call every loop; returns true once
+// per press. Always returns false when SOS_BUTTON_PIN is not defined in config.h.
+bool sosButtonPressed();
 bool bleIsConnected();
 
 #endif // BLE_H

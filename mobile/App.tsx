@@ -8,8 +8,10 @@ import { useOnboarded } from './src/lib/onboarding';
 import { MainTabs } from './src/navigation/MainTabs';
 import type { RootStackParamList } from './src/navigation/types';
 import { EmergencyBoundaryScreen } from './src/screens/emergency/EmergencyBoundaryScreen';
+import { SosScreen } from './src/screens/emergency/SosScreen';
 import { OnboardingScreen } from './src/screens/onboarding/OnboardingScreen';
 import { PortableProvider } from './src/state/portable';
+import { SosBridge } from './src/state/SosBridge';
 import { colors } from './src/theme';
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
@@ -39,11 +41,17 @@ export default function App() {
             <RootStack.Screen name="Onboarding" component={OnboardingScreen} />
             <RootStack.Screen name="Main" component={MainTabs} />
             <RootStack.Screen
+              name="Sos"
+              component={SosScreen}
+              options={{ presentation: 'modal', headerShown: false }}
+            />
+            <RootStack.Screen
               name="EmergencyBoundary"
               component={EmergencyBoundaryScreen}
               options={{ presentation: 'modal', headerShown: false }}
             />
           </RootStack.Navigator>
+          <SosBridge />
         </NavigationContainer>
       </PortableProvider>
     </SafeAreaProvider>

@@ -107,6 +107,9 @@ USER_TABLES = (
     "patterns",
     "decision_events",
     "devices",
+    "action_plans",
+    "emergency_contacts",
+    "sos_events",
 )
 
 
@@ -162,6 +165,75 @@ def upsert_device(user_sub: str, device: dict) -> list:
         row,
         params={"on_conflict": "user_id,external_id"},
         headers={"Prefer": "resolution=merge-duplicates,return=representation"},
+    )
+
+
+# ── Asthma action plan (user/clinician authored — Aeris never writes medical content) ──
+ACTION_PLAN_DEFAULTS = {
+    "author": "user",
+    "clinician_name": None,
+    "reviewed_at": None,
+    "normal_steps": [],
+    "caution_steps": [],
+    "high_steps": [],
+    "emergency_steps": [],
+    "notes": None,
+}
+ACTION_PLAN_FIELDS = tuple(ACTION_PLAN_DEFAULTS)
+
+
+def get_action_plan(user_sub: str) -> dict:
+    """The user's own plan, or an empty plan. An empty plan is a real state — the app shows
+    "no plan recorded" rather than any default steps, because Aeris must not author care
+    instructions (TDD §1.2/§14)."""
+    rows = supa.sb_get("action_plans", {"user_id": f"eq.{user_sub}", "limit": "1"})
+    if not rows:
+        return {**ACTION_PLAN_DEFAULTS, "exists": False}
+    row = rows[0]
+    return {**{k: row.get(k, ACTION_PLAN_DEFAULTS[k]) for k in ACTION_PLAN_FIELDS}, "exists": True}
+
+
+def upsert_action_plan(user_sub: str, changes: dict) -> dict:
+    current = get_action_plan(user_sub)
+    merged = {**{k: current[k] for k in ACTION_PLAN_FIELDS},
+              **{k: v for k, v in changes.items() if k in ACTION_PLAN_FIELDS}}
+    supa.sb_post(
+        "action_plans",
+        {"user_id": user_sub, **merged},
+        params={"on_conflict": "user_id"},
+        headers={"Prefer": "resolution=merge-duplicates,return=representation"},
+    )
+    return {**merged, "exists": True}
+
+
+# ── Emergency contacts + SOS (§ SOS Flow) ────────────────────────────────────
+def list_contacts(user_sub: str) -> list:
+    return supa.sb_get(
+        "emergency_contacts", {"user_id": f"eq.{user_sub}", "order": "sort_order.asc"}
+    )
+
+
+def add_contact(user_sub: str, contact: dict) -> list:
+    return supa.sb_post("emergency_contacts", {"user_id": user_sub, **contact})
+
+
+def delete_contact(user_sub: str, contact_id: str) -> list:
+    return supa.sb_delete(
+        "emergency_contacts", {"user_id": f"eq.{user_sub}", "id": f"eq.{contact_id}"}
+    )
+
+
+def store_sos(user_sub: str, event: dict) -> list:
+    """Record an SOS the user raised. Location is written only when the caller already
+    honoured privacy_consents.location_sharing — this layer stores what it is given."""
+    return supa.sb_post("sos_events", {"user_id": user_sub, **event})
+
+
+def get_sos_events(user_sub: str, limit: int = 20) -> list:
+    return supa.sb_get(
+        "sos_events",
+        {"user_id": f"eq.{user_sub}", "order": "occurred_at.desc",
+         "limit": str(max(1, min(limit, 100)))},
     )
 
 

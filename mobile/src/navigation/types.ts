@@ -3,6 +3,8 @@ export type RootStackParamList = {
   Onboarding: undefined;
   Main: undefined;
   EmergencyBoundary: { severity: 'severe' } | undefined;
+  /** SOS raised in-app, or forwarded from the portable's own button over BLE. */
+  Sos: { source?: 'app' | 'portable'; deviceId?: string } | undefined;
 };
 
 export type HomeStackParamList = {
@@ -38,4 +40,6 @@ export type ProfileStackParamList = {
   PairSensor: undefined;
   Notifications: undefined;
   About: undefined;
+  ActionPlan: undefined;
+  EmergencyContacts: undefined;
 };

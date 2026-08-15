@@ -55,6 +55,8 @@ export function ProfileSettingsScreen({ navigation }: Props) {
     {
       title: 'Data',
       items: [
+        { label: 'Action Plan', hint: 'The plan you or your clinician wrote', onPress: () => navigation.navigate('ActionPlan') },
+        { label: 'Emergency Contacts', hint: 'Shown when you raise an SOS', onPress: () => navigation.navigate('EmergencyContacts') },
         { label: 'Privacy', onPress: () => navigation.navigate('Privacy') },
         { label: 'Data export', hint: 'Export or delete your synced data', onPress: () => navigation.navigate('Privacy') },
       ],
