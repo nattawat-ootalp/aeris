@@ -72,6 +72,7 @@ export function PortableProvider({ children }: { children: ReactNode }) {
                 humidity: t.humidity,
                 // undefined stays undefined here (JSON.stringify drops the key) so an absent
                 // SGP30 reading is omitted from the request, never coerced to 0/null.
+                co2: t.co2,
                 tvoc: t.tvoc,
                 eco2: t.eco2,
                 battery: t.battery,

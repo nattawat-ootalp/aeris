@@ -65,6 +65,9 @@ class Reading:
     pm25: float | None = None
     temperature: float | None = None
     humidity: float | None = None
+    # TRUE CO2 from the SCD40 (NDIR), ppm. Environmental context only — like tvoc/eco2 it is
+    # never an input to Decision/EnvState/WatchStatus (§14: the decision path stays PM2.5-driven).
+    co2: float | None = None
     battery: int | None = None
     sensor_status: str = "OK"
     quality_score: float | None = None

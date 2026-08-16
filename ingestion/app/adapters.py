@@ -46,7 +46,8 @@ def station_to_reading(s: StationTelemetry) -> Reading:
         schema_version=s.schema_version,
         # AirSentinel stations already report TVOC — free win, symmetric with portable.
         tvoc=tvoc_ppb(_sensor_num(s.sensors, "tvoc")),
-        # No station eCO2: a station's "co2" sensor (if present) is a real SCD40 measurement,
-        # not a VOC-derived estimate — it must never be mapped into this field.
+        # A station's "co2" sensor IS a real SCD40 measurement, so it maps to co2 — never
+        # into eco2, which is reserved for the SGP30's VOC-derived estimate.
+        co2=_sensor_num(s.sensors, "co2"),
         eco2=None,
     )

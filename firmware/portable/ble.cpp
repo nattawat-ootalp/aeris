@@ -90,6 +90,10 @@ void bleNotifyTelemetry(const SensorData& data, bool sensorsValid, int battery_p
   if (data.scd40_valid) {
     doc["temperature"] = data.temperature;
     doc["humidity"] = data.humidity;
+    // TRUE CO2 from the SCD40's NDIR measurement, ppm. Distinct from the SGP30's "eco2"
+    // below, which is only a VOC-derived estimate. Omitted with the rest of the SCD40 block
+    // when that sensor is invalid — never a fabricated value.
+    doc["co2"] = (uint16_t)data.co2;
   }
   // SGP30 TVOC/eCO2 — omitted entirely when invalid (incl. the 15 s warmup and when the
   // chip is absent). Omission is what tells the phone/backend "no data"; a fabricated 0

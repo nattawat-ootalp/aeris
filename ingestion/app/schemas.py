@@ -17,6 +17,9 @@ class PortableTelemetry(BaseModel):
     pm25: float | None = None
     temperature: float | None = None
     humidity: float | None = None
+    # SCD40 — a TRUE CO2 measurement (NDIR), ppm. Absent when the SCD40 is invalid.
+    # Deliberately a separate field from `eco2` below; the two must never be merged.
+    co2: float | None = None
     battery: int | None = None
     sensor_status: str = "OK"
     quality_score: float | None = None

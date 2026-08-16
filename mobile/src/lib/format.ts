@@ -16,6 +16,12 @@ export function tvocLabel(ppb: number | undefined): string {
   return ppb == null ? 'No Data' : `${Math.round(ppb)} ppb`;
 }
 
+/** CO2 measured directly by the SCD40 (NDIR), ppm. Omitted by the device whenever the SCD40
+ *  is invalid, so `undefined`/null means no data — never 0, never a stale value. */
+export function co2Label(ppm: number | undefined | null): string {
+  return ppm == null ? 'No Data' : `${Math.round(ppm)} ppm`;
+}
+
 /** eCO2 is ESTIMATED from VOC sensing, not a direct CO2 measurement — callers must keep it
  *  labeled "(estimated)" wherever it is shown. Same no-data rule as tvocLabel. */
 export function eco2Label(ppm: number | undefined | null): string {

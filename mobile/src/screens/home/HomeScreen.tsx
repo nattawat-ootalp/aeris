@@ -61,7 +61,9 @@ export function HomeScreen({ navigation }: Props) {
   const temperature = usingLocal ? telemetry?.temperature : remote.data?.temperature;
   const humidity = usingLocal ? telemetry?.humidity : remote.data?.humidity;
   const tvoc = usingLocal ? telemetry?.tvoc : remote.data?.tvoc;
-  const eco2 = usingLocal ? telemetry?.eco2 : remote.data?.eco2;
+  // The SCD40's true CO2 is what the grid shows. The SGP30's eco2 estimate is deliberately
+  // not surfaced here — two "CO2" tiles side by side would read as one measurement twice.
+  const co2 = usingLocal ? telemetry?.co2 : remote.data?.co2;
 
   return (
     <Screen
@@ -104,9 +106,9 @@ export function HomeScreen({ navigation }: Props) {
                 </Text>
               </View>
               <View style={styles.sensorItem}>
-                <Text style={styles.sensorLabel}>eCO2</Text>
+                <Text style={styles.sensorLabel}>CO2</Text>
                 <Text style={styles.sensorValue}>
-                  {eco2 != null ? `${eco2.toFixed(0)} ppm` : '--'}
+                  {co2 != null ? `${co2.toFixed(0)} ppm` : '--'}
                 </Text>
               </View>
             </View>

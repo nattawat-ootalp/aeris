@@ -18,6 +18,8 @@ export interface DecisionEvent {
   temperature: number | null;
   humidity: number | null;
   tvoc: number | null;
+  /** TRUE CO2 measured by the SCD40 (NDIR), ppm. */
+  co2: number | null;
   eco2: number | null;
 }
 
@@ -64,6 +66,7 @@ export interface ExposureEventDetail extends ExposureTimelineEvent {
   temperature_avg: number | null;
   humidity_avg: number | null;
   tvoc_avg: number | null;
+  co2_avg: number | null;
   eco2_avg: number | null;
   trend: string | null;
 }

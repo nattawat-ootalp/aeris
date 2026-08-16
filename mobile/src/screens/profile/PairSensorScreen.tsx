@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { PrimaryButton, SecondaryButton } from '../../components/ui';
 import { Screen } from '../../components/Screen';
-import { eco2Label, tvocLabel } from '../../lib/format';
+import { co2Label, eco2Label, tvocLabel } from '../../lib/format';
 import { usePortable } from '../../state/portable';
 import { colors, radius, space, type } from '../../theme';
 
@@ -27,7 +27,7 @@ export function PairSensorScreen() {
             Battery {telemetry?.battery ?? '—'}% · {telemetry?.sensor_status ?? 'waiting for data'}
           </Text>
           <Text style={styles.deviceMeta}>
-            TVOC {tvocLabel(telemetry?.tvoc)} · eCO2 (estimated) {eco2Label(telemetry?.eco2)}
+            CO2 {co2Label(telemetry?.co2)} · TVOC {tvocLabel(telemetry?.tvoc)} · eCO2 (estimated) {eco2Label(telemetry?.eco2)}
           </Text>
           <SecondaryButton label="Disconnect" onPress={disconnectDevice} />
         </View>

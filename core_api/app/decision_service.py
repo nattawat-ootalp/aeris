@@ -71,5 +71,6 @@ def evaluate_readings(
     contract["temperature"] = latest.temperature if readings else None
     contract["humidity"] = latest.humidity if readings else None
     contract["tvoc"] = latest.tvoc if readings else None
+    contract["co2"] = latest.co2 if readings else None
     contract["eco2"] = latest.eco2 if readings else None
     return contract

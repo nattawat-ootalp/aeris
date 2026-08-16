@@ -5,7 +5,7 @@ import { StyleSheet, Text } from 'react-native';
 import { getExposureEvent } from '../../api/client';
 import { EmptyState, ErrorState, InfoCard, LoadingState, MetaRow } from '../../components/ui';
 import { Screen } from '../../components/Screen';
-import { clockLabel, durationLabel, eco2Label, tvocLabel, valueLabel } from '../../lib/format';
+import { clockLabel, co2Label, durationLabel, eco2Label, tvocLabel, valueLabel } from '../../lib/format';
 import { useActiveDeviceId, withDevice } from '../../lib/device';
 import { useRemote } from '../../lib/useRemote';
 import { colors, type } from '../../theme';
@@ -43,6 +43,7 @@ export function ExposureEventDetailScreen({ route }: Props) {
         <MetaRow label="Temperature" value={valueLabel(data.temperature_avg, '°C', 1)} />
         <MetaRow label="Humidity" value={valueLabel(data.humidity_avg, '%')} />
         <MetaRow label="TVOC" value={tvocLabel(data.tvoc_avg ?? undefined)} />
+        <MetaRow label="CO2" value={co2Label(data.co2_avg)} />
         <MetaRow label="eCO2 (estimated)" value={eco2Label(data.eco2_avg)} />
       </InfoCard>
       <InfoCard title="Context">

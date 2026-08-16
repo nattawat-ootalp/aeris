@@ -4,7 +4,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { getDeviceDecision, getNodeHistory } from '../../api/client';
 import { EmptyState, ErrorState, InfoCard, LoadingState, MetaRow, SectionLabel } from '../../components/ui';
 import { Screen } from '../../components/Screen';
-import { eco2Label, freshnessLabel, tvocLabel } from '../../lib/format';
+import { co2Label, eco2Label, freshnessLabel, tvocLabel } from '../../lib/format';
 import { useActiveDeviceId, withDevice } from '../../lib/device';
 import { usePortable } from '../../state/portable';
 import { colors, space, type } from '../../theme';
@@ -66,11 +66,13 @@ export function CurrentExposureScreen() {
 
       {telemetry ? (
         <InfoCard title="From your device">
+          <MetaRow label="CO2" value={co2Label(telemetry.co2)} />
           <MetaRow label="TVOC" value={tvocLabel(telemetry.tvoc)} />
           <MetaRow label="eCO2 (estimated)" value={eco2Label(telemetry.eco2)} />
           <Text style={styles.note}>
-            eCO2 is estimated from VOC sensing — it is not a direct CO2 measurement. TVOC and eCO2
-            are unavailable while the VOC sensor warms up.
+            CO2 is measured directly by the SCD40 sensor. eCO2 is a separate figure estimated from
+            VOC sensing — the two are not interchangeable. CO2 is unavailable when the SCD40 is
+            invalid; TVOC and eCO2 are unavailable while the VOC sensor warms up.
           </Text>
         </InfoCard>
       ) : null}

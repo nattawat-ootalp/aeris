@@ -20,7 +20,7 @@ Portable → BLE → phone (gateway) → HTTPS `/ingest/portable` → backend. K
 
 ### Telemetry JSON (Aeris data contract §4, minus device_id — BLE already identifies the device)
 ```json
-{"pm25":34.2,"temperature":31.2,"humidity":71.4,"tvoc":120,"eco2":450,"battery":82,"sensor_status":"OK","quality_score":0.96,"ts":1755090000}
+{"pm25":34.2,"temperature":31.2,"humidity":71.4,"co2":812,"tvoc":120,"eco2":450,"battery":82,"sensor_status":"OK","quality_score":0.96,"ts":1755090000}
 ```
 
 | Field | Type | Unit | Omitted when |
@@ -28,6 +28,7 @@ Portable → BLE → phone (gateway) → HTTPS `/ingest/portable` → backend. K
 | `pm25` | float | µg/m³ | PMS7003 invalid/no data |
 | `temperature` | float | °C | SCD40 invalid/no data |
 | `humidity` | float | %RH | SCD40 invalid/no data |
+| `co2` | int | ppm | SCD40 invalid/no data |
 | `tvoc` | int | ppb | SGP30 invalid — no data / still in 15 s warmup / chip absent |
 | `eco2` | int | ppm | SGP30 invalid — no data / still in 15 s warmup / chip absent |
 | `battery` | int | % | never (placeholder if no fuel gauge wired) |
@@ -36,9 +37,13 @@ Portable → BLE → phone (gateway) → HTTPS `/ingest/portable` → backend. K
 | `ts` | int | epoch seconds | never |
 
 - `sensor_status`: `OK` | `WARMUP` | `ERROR`, reflects **PM validity only**. If PM invalid, firmware sends `sensor_status:"ERROR"` and **omits `pm25`** (never a fabricated value) — the app/backend then produce No Data, not a PM caution. SGP30 health is **never** folded into `sensor_status` (see Device status below) — an absent/warming-up SGP30 must not suppress a perfectly good PM reading.
-- `tvoc` / `eco2`: from the **SGP30**. **`eco2` is an *estimated* CO2-equivalent derived from VOC sensing — it is NOT a real CO2 measurement.** The SCD40 on the same board measures true CO2 via NDIR but is currently not transmitted over BLE; apps/backends must not label `eco2` as "CO2" or treat it as interchangeable with a real CO2 reading. Both fields are **omitted entirely** (not sent as `0` or `null`) whenever the SGP30 is invalid — during its 15 s power-on warmup, after an I2C bus recovery re-warmup, or when the chip is not physically present on the bus. Omission is the sole "no data" signal; consumers must render "no data", never treat a missing field as 0.
+- `co2`: from the **SCD40**, a **true NDIR CO2 measurement**. Sent with `temperature`/`humidity`
+  and omitted with them when the SCD40 is invalid. It is a different quantity from `eco2` below
+  and the two must never be merged, substituted for each other, or shown as one value: the app
+  labels this one plainly "CO2" and keeps `eco2` marked "(estimated)".
+- `tvoc` / `eco2`: from the **SGP30**. **`eco2` is an *estimated* CO2-equivalent derived from VOC sensing — it is NOT a real CO2 measurement.** The SCD40's true NDIR CO2 is transmitted separately as `co2` above; apps/backends must not label `eco2` as "CO2" or treat it as interchangeable with the real reading. Both fields are **omitted entirely** (not sent as `0` or `null`) whenever the SGP30 is invalid — during its 15 s power-on warmup, after an I2C bus recovery re-warmup, or when the chip is not physically present on the bus. Omission is the sole "no data" signal; consumers must render "no data", never treat a missing field as 0.
 - `ts`: device epoch seconds (phone re-stamps with its own clock on ingest if device clock is unset).
-- MTU: request ≥185 so the JSON fits one notification; if MTU is small the firmware still keeps the JSON <180 bytes. Measured worst case (all fields present, longest string/decimal cases): ~158 bytes.
+- MTU: request ≥185 so the JSON fits one notification; if MTU is small the firmware still keeps the JSON <180 bytes. Measured worst case (all fields present including `co2`, longest string/decimal cases): ~170 bytes.
 
 ### Device status JSON
 ```json

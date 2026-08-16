@@ -26,6 +26,7 @@ def _row_to_reading(device_id: str, row: dict) -> Reading:
         sensor_status=row.get("sensor_status", "OK"),
         quality_score=row.get("quality_score"),
         tvoc=row.get("tvoc"),
+        co2=row.get("co2"),
         eco2=row.get("eco2"),
     )
 

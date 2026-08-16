@@ -54,6 +54,12 @@ def tvoc_ppb(value, cfg: IntelligenceConfig = CONFIG):
     return _ranged(value, cfg.tvoc_min_ppb, cfg.tvoc_max_ppb)
 
 
+def co2_ppm(value, cfg: IntelligenceConfig = CONFIG):
+    """SCD40 CO2 (ppm) — a TRUE NDIR measurement, unlike the SGP30's eco2 estimate below.
+    None if absent, unparseable, or outside the datasheet range."""
+    return _ranged(value, cfg.co2_min_ppm, cfg.co2_max_ppm)
+
+
 def eco2_ppm(value, cfg: IntelligenceConfig = CONFIG):
     """SGP30 eCO2 (ppm) — a VOC-derived CO2-EQUIVALENT ESTIMATE, not a true CO2 measurement
     (the SCD40 measures real CO2). None if absent, unparseable, or outside the datasheet range."""
@@ -80,6 +86,7 @@ def parse_reading(payload: dict) -> Reading:
         pm25=_num(payload.get("pm25")),
         temperature=_num(payload.get("temperature")),
         humidity=_num(payload.get("humidity")),
+        co2=co2_ppm(payload.get("co2")),
         battery=battery,
         sensor_status=str(payload.get("sensor_status", "OK")),
         quality_score=_num(payload.get("quality_score")),

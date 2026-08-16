@@ -128,6 +128,8 @@ export async function ingestPortable(payload: {
   pm25?: number;
   temperature?: number;
   humidity?: number;
+  /** ppm, a TRUE CO2 measurement from the SCD40. Omit when that sensor has no reading. */
+  co2?: number;
   /** ppb. Omit (leave undefined) when the SGP30 has no reading — never send 0/null as a stand-in. */
   tvoc?: number;
   /** ppm, ESTIMATED from VOC sensing (not a direct CO2 measurement). Same omit-when-absent rule as tvoc. */

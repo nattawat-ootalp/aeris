@@ -131,6 +131,7 @@ def segment_detail(readings: list[Reading], event_id: str) -> dict | None:
             "temperature_avg": _avg([r.temperature for r in inside]),
             "humidity_avg": _avg([r.humidity for r in inside]),
             "tvoc_avg": _avg([r.tvoc for r in inside]),
+            "co2_avg": _avg([r.co2 for r in inside]),
             "eco2_avg": _avg([r.eco2 for r in inside]),
             "trend": _trend([r.pm25 for r in inside if r.pm25 is not None]),
         }

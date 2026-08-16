@@ -15,6 +15,9 @@ export interface PortableTelemetry {
   pm25?: number;
   temperature?: number;
   humidity?: number;
+  /** TRUE CO2 from the SCD40 (NDIR), ppm. Omitted with the rest of the SCD40 block when that
+   *  sensor is invalid. Distinct from `eco2` below — never treat the two as interchangeable. */
+  co2?: number;
   /** Total VOC, ppb. OMITTED by the firmware while the SGP30 is warming up (15s) or invalid —
    *  `undefined` means no data; never render it as 0 or a stale prior value. */
   tvoc?: number;
