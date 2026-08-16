@@ -6,6 +6,15 @@ export function freshnessLabel(sec: number | null): string {
   return `Updated ${Math.round(sec / 3600)} hr ago`;
 }
 
+/** Clock time of the reading plus how old it is, e.g. "14:32 · Updated 12s ago".
+ *  The age is always shown next to the time: a clock time on its own makes a stale reading
+ *  look like a present one (§5.6). Falls back to the age alone when no timestamp is known. */
+export function measuredAtLabel(iso: string | null | undefined, sec: number | null): string {
+  const time = clockLabel(iso);
+  if (time === '--') return freshnessLabel(sec);
+  return `${time} · ${freshnessLabel(sec)}`;
+}
+
 export function isStale(sec: number | null, maxAgeSec = 900): boolean {
   return sec == null || sec > maxAgeSec;
 }

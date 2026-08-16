@@ -17,6 +17,11 @@ from intelligence.models import Decision, Reading
 from intelligence.persistence import PersistenceEngine
 from intelligence.quality import assess_quality
 
+# Sensor fields the contract always carries. Present even with no data, as explicit nulls:
+# a missing key reads as `undefined` in the client and is indistinguishable from a field the
+# app forgot to request, whereas null says "no reading" (§5.6, §14).
+SENSOR_FIELDS = ("pm25", "temperature", "humidity", "co2", "tvoc", "eco2")
+
 
 def _no_data() -> dict:
     from intelligence.models import Confidence, DecisionEvent, Reason
@@ -25,7 +30,10 @@ def _no_data() -> dict:
         reason_codes=[Reason.NO_VALID_DATA], freshness_sec=None, sample_size=0,
         watch_label="No Data",
     )
-    return to_contract(ev)
+    contract = to_contract(ev)
+    contract.update(dict.fromkeys(SENSOR_FIELDS))
+    contract["measured_at"] = None
+    return contract
 
 
 def evaluate_readings(
@@ -67,10 +75,14 @@ def evaluate_readings(
         exposure=exposure,
     )
     contract = to_contract(event)
-    contract["pm25"] = latest.pm25 if (readings and latest_quality.pm25_valid) else None
-    contract["temperature"] = latest.temperature if readings else None
-    contract["humidity"] = latest.humidity if readings else None
-    contract["tvoc"] = latest.tvoc if readings else None
-    contract["co2"] = latest.co2 if readings else None
-    contract["eco2"] = latest.eco2 if readings else None
+    contract["pm25"] = latest.pm25 if latest_quality.pm25_valid else None
+    contract["temperature"] = latest.temperature
+    contract["humidity"] = latest.humidity
+    contract["tvoc"] = latest.tvoc
+    contract["co2"] = latest.co2
+    contract["eco2"] = latest.eco2
+    # When the reading was actually taken, so the app can show a clock time rather than only
+    # an age. freshness_sec stays the authority on whether it counts as current — a timestamp
+    # alone would let a stale value look like a present one (§5.6).
+    contract["measured_at"] = latest.timestamp.isoformat()
     return contract

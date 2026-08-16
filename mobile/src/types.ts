@@ -21,6 +21,8 @@ export interface DecisionEvent {
   /** TRUE CO2 measured by the SCD40 (NDIR), ppm. */
   co2: number | null;
   eco2: number | null;
+  /** ISO time the reading was actually taken, or null when there is no reading. */
+  measured_at: string | null;
 }
 
 export interface DestinationAssessment {

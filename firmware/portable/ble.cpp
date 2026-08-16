@@ -142,8 +142,7 @@ void bleNotifySos(uint32_t press_ts_sec) {
   doc["ts"] = press_ts_sec;
   String out;
   serializeJson(doc, out);
-  Serial.printf("[BLE] SOS (%u B): %s
-", (unsigned)out.length(), out.c_str());
+  Serial.printf("[BLE] SOS (%u B): %s\n", (unsigned)out.length(), out.c_str());
   if (sosChar == nullptr) return;
   sosChar->setValue(out.c_str());
   // Value is set even when disconnected so a phone that connects later can READ the last

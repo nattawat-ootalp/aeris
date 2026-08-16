@@ -8,7 +8,7 @@ import { getDeviceDecision, getForecast, getRisk } from '../../api/client';
 import { InfoCard, LoadingState } from '../../components/ui';
 import { HeroStatusCard } from '../../components/WatchStatus';
 import { Screen } from '../../components/Screen';
-import { freshnessLabel } from '../../lib/format';
+import { clockLabel, measuredAtLabel } from '../../lib/format';
 import { useActiveDeviceId, useThresholds, watchStatusFor, withDevice } from '../../lib/device';
 import { ForecastCard, RiskCard } from '../../components/RiskCards';
 import { usePortable } from '../../state/portable';
@@ -61,9 +61,17 @@ export function HomeScreen({ navigation }: Props) {
   const temperature = usingLocal ? telemetry?.temperature : remote.data?.temperature;
   const humidity = usingLocal ? telemetry?.humidity : remote.data?.humidity;
   const tvoc = usingLocal ? telemetry?.tvoc : remote.data?.tvoc;
-  // The SCD40's true CO2 is what the grid shows. The SGP30's eco2 estimate is deliberately
-  // not surfaced here — two "CO2" tiles side by side would read as one measurement twice.
+  // The SCD40's true CO2 and the SGP30's eco2 estimate are both shown, each labelled for what
+  // it is — the estimate is never presented as the measurement.
   const co2 = usingLocal ? telemetry?.co2 : remote.data?.co2;
+  const eco2 = usingLocal ? telemetry?.eco2 : remote.data?.eco2;
+  // A live BLE frame stamps its own device clock (`ts`, epoch seconds); a backend reading
+  // carries the time it was recorded.
+  const measuredAt = usingLocal
+    ? telemetry?.ts
+      ? new Date(telemetry.ts * 1000).toISOString()
+      : null
+    : (remote.data?.measured_at ?? null);
 
   return (
     <Screen
@@ -82,7 +90,11 @@ export function HomeScreen({ navigation }: Props) {
           <HeroStatusCard
             status={status}
             pm25={pm25}
-            freshnessLabel={usingLocal ? 'Live from your device' : freshnessLabel(remote.data?.freshness_sec ?? null)}
+            freshnessLabel={
+              usingLocal
+                ? `Live from your device · ${clockLabel(measuredAt)}`
+                : measuredAtLabel(measuredAt, remote.data?.freshness_sec ?? null)
+            }
           />
 
           <InfoCard title="Sensor Readings">
@@ -90,25 +102,31 @@ export function HomeScreen({ navigation }: Props) {
               <View style={styles.sensorItem}>
                 <Text style={styles.sensorLabel}>Temperature</Text>
                 <Text style={styles.sensorValue}>
-                  {temperature != null ? `${temperature.toFixed(1)}°C` : '--'}
+                  {temperature != null ? `${temperature.toFixed(1)}°C` : 'No Data'}
                 </Text>
               </View>
               <View style={styles.sensorItem}>
                 <Text style={styles.sensorLabel}>Humidity</Text>
                 <Text style={styles.sensorValue}>
-                  {humidity != null ? `${humidity.toFixed(0)}%` : '--'}
-                </Text>
-              </View>
-              <View style={styles.sensorItem}>
-                <Text style={styles.sensorLabel}>TVOC</Text>
-                <Text style={styles.sensorValue}>
-                  {tvoc != null ? `${tvoc.toFixed(0)} ppb` : '--'}
+                  {humidity != null ? `${humidity.toFixed(0)}%` : 'No Data'}
                 </Text>
               </View>
               <View style={styles.sensorItem}>
                 <Text style={styles.sensorLabel}>CO2</Text>
                 <Text style={styles.sensorValue}>
-                  {co2 != null ? `${co2.toFixed(0)} ppm` : '--'}
+                  {co2 != null ? `${co2.toFixed(0)} ppm` : 'No Data'}
+                </Text>
+              </View>
+              <View style={styles.sensorItem}>
+                <Text style={styles.sensorLabel}>TVOC</Text>
+                <Text style={styles.sensorValue}>
+                  {tvoc != null ? `${tvoc.toFixed(0)} ppb` : 'No Data'}
+                </Text>
+              </View>
+              <View style={styles.sensorItem}>
+                <Text style={styles.sensorLabel}>eCO2 (estimated)</Text>
+                <Text style={styles.sensorValue}>
+                  {eco2 != null ? `${eco2.toFixed(0)} ppm` : 'No Data'}
                 </Text>
               </View>
             </View>

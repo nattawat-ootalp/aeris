@@ -103,3 +103,27 @@ def test_symptom_mapping(monkeypatch):
     assert payload[1]["severity"] == 5
     assert payload[1]["occurred_at"] == "2026-08-14T09:22:31.000Z"
     assert payload[1]["note"] == "Felt bad after run"
+
+
+def test_decision_contract_always_carries_every_sensor_key():
+    """A missing key is `undefined` in the client and looks like a forgotten request; an
+    explicit null says "no reading". The shape must not change with the data."""
+    from core_api.app.decision_service import SENSOR_FIELDS, evaluate_readings
+
+    empty = evaluate_readings([], datetime.now(UTC))
+    for key in (*SENSOR_FIELDS, "measured_at"):
+        assert key in empty, key
+        assert empty[key] is None
+
+
+def test_decision_contract_reports_when_the_reading_was_taken():
+    from core_api.app.decision_service import evaluate_readings
+
+    now = datetime.now(UTC)
+    taken = now - timedelta(seconds=30)
+    body = evaluate_readings(
+        [Reading(device_id="P001", timestamp=taken, pm25=20.0, tvoc=110.0, eco2=460.0, co2=800.0)],
+        now,
+    )
+    assert body["measured_at"] == taken.isoformat()
+    assert body["tvoc"] == 110.0 and body["eco2"] == 460.0 and body["co2"] == 800.0
