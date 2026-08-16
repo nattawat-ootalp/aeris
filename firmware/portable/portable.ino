@@ -21,7 +21,7 @@ static unsigned long lastBleNotify = 0;
 static unsigned long lastStatusNotify = 0;
 static SensorData latestData = {};
 
-#define FW_VERSION "1.0.0"
+#define FW_VERSION "1.1.0"
 // No fuel gauge wired in this MVP build — report a fixed placeholder rather than a
 // fabricated reading; a future revision should read a real ADC/fuel-gauge here.
 #define BATTERY_PLACEHOLDER_PCT 100
