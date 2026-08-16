@@ -13,7 +13,13 @@ from influxdb_client import InfluxDBClient
 from ingestion.app.config import settings
 
 _client: InfluxDBClient | None = None
-_SAFE = re.compile(r"[^A-Za-z0-9_\-]")
+# Characters allowed inside an interpolated Flux string literal. Colons and dots are here
+# because a paired portable's id is its BLE identifier — a MAC address on Android
+# (14:C1:9F:C1:25:F5) and a UUID on iOS. Stripping the colons silently rewrote the id, so
+# every device-scoped query looked for a device that had never written a point, and the app
+# showed No Data while the readings sat in the bucket under the real id.
+# Quotes and backslashes stay excluded: those are what could break out of the literal.
+_SAFE = re.compile(r"[^A-Za-z0-9_\-:.]")
 
 
 def _query_api():

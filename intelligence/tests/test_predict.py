@@ -80,3 +80,22 @@ def test_note_is_environmental_only():
     f = forecast_pm25(_series([10, 20, 30, 40, 50, 60]), now=NOW)
     assert "not a prediction of symptoms" in f.note
     assert "safe" not in f.note.lower()
+
+
+def test_a_gap_early_in_the_window_does_not_discard_the_continuous_run_after_it():
+    """A device that rebooted an hour ago still has a perfectly good recent series. Refusing
+    the whole window because of that hole throws away exactly the data that describes now."""
+    recent = _series([10, 12, 14, 16, 18, 20, 22, 24], step_sec=60)
+    stale = [(NOW - timedelta(minutes=50), 90.0), (NOW - timedelta(minutes=48), 95.0)]
+    f = forecast_pm25(stale + recent, now=NOW)
+    assert f.available is True
+    assert f.sample_size == len(recent)          # only the run after the gap is used
+    assert Reason.FORECAST_RISING in f.reason_codes
+
+
+def test_the_run_after_a_gap_must_still_be_long_enough():
+    older = [(NOW - timedelta(minutes=50 - i), 20.0) for i in range(8)]
+    tail = _series([30, 31, 32], step_sec=60)     # only 3 samples after the hole
+    f = forecast_pm25(older + tail, now=NOW)
+    assert f.available is False
+    assert Reason.FORECAST_COVERAGE_GAP in f.reason_codes

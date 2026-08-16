@@ -87,9 +87,19 @@ def forecast_pm25(
     if age > cfg.freshness_max_age_sec:
         return _unavailable(horizon, [Reason.DATA_STALE], n)
 
-    # A hole in the middle makes the slope an artefact of the gap, not of the air.
-    for (t0, _), (t1, _) in zip(pts, pts[1:], strict=False):
+    # A hole in the data makes the slope an artefact of the gap, not of the air — but the
+    # samples *after* the last hole are perfectly good, and they are the ones that describe the
+    # present. Keep that run and drop everything before it, rather than discarding an hour of
+    # continuous readings because the device rebooted at the start of the window. If the run is
+    # too short to fit a line to, that is the honest refusal.
+    last_break = 0
+    for i, ((t0, _), (t1, _)) in enumerate(zip(pts, pts[1:], strict=False), start=1):
         if (t1 - t0).total_seconds() > cfg.exposure_max_gap_sec:
+            last_break = i
+    if last_break:
+        pts = pts[last_break:]
+        n = len(pts)
+        if n < cfg.forecast_min_samples:
             return _unavailable(horizon, [Reason.FORECAST_COVERAGE_GAP], n)
 
     # Least-squares fit on seconds-from-now (so x=0 is the present moment).
