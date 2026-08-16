@@ -11,12 +11,29 @@ Authoritative design: **[docs/aeris-tdd.md](docs/aeris-tdd.md)** (the Aeris Tech
 Where we run the AWS design on a **free stack**, the trade-offs are recorded in
 **[docs/DECISIONS.md](docs/DECISIONS.md)** — never left silent.
 
+## Prototype scope (current)
+
+This build is a **prototype**. The demonstrated path is **portable → BLE → phone → HTTPS POST → FastAPI**.
+
+The station path (AirSentinel node → MQTT → HiveMQ webhook → FastAPI) is **implemented and tested but out of
+scope for the prototype demo**: the only ESP32-S3 on hand runs the portable firmware, so node `BKK-TRT-003`
+publishes nothing and `/nodes/{device_id}/telemetry` correctly answers `"no recent data"`. Nothing about the
+station was removed — re-flashing a board with `firmware/station` is all it takes to bring the path back.
+
+Two other prototype-only conditions, both deliberate:
+
+- The APK is signed with the **debug keystore**. Fine for sideloading, not acceptable for a store release.
+- The Supabase `service_role` key and database password are still the development ones and have not been
+  rotated. Rotate both before this leaves the prototype stage.
+
 ## Architecture (free stack)
 
 ```
 Portable (ESP32-S3 + PMS7003 + SCD40) ──BLE──▶ Phone ──HTTPS POST─┐
                                                                    ├─▶ FastAPI (Render Free)
-Station (AirSentinel node) ──MQTT/TLS──▶ HiveMQ Cloud ──webhook────┘        │
+Station (AirSentinel node) ──MQTT/TLS──▶ HiveMQ Cloud ──webhook────┘        │   (built, not
+                                                                            │    demoed — see
+                                                                            │    Prototype scope)
                                                                             ▼
                     shared validation → InfluxDB Cloud + Supabase → Intelligence
                     (quality → exposure → baseline → pattern → decision → explainability)
