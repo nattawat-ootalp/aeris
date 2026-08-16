@@ -19,7 +19,14 @@ static bool pms_initialized    = false;
 static unsigned long sgp30_start_ms = 0;
 
 // ตัวแปรสำหรับจำค่าล่าสุด
-static SensorData currentData = {};
+// เริ่มด้วย NAN ไม่ใช่ 0: ถ้ามีเส้นทางไหนหลุดการเช็ค *_valid ไป ค่าที่ออกไปต้องอ่านออกว่า
+// "ไม่มีข้อมูล" ไม่ใช่ศูนย์ที่ดูเหมือนอากาศสะอาดหรือห้องเย็น
+static SensorData currentData = {
+  NAN, NAN, false,      // pm2_5, pm10, pms_valid
+  NAN, NAN, NAN, false, // co2, temperature, humidity, scd40_valid
+  NAN, NAN, false,      // tvoc, eco2, sgp30_valid
+  false                 // all_valid
+};
 static unsigned long last_pms_read   = 0;
 static unsigned long last_scd40_read = 0;      // อ่านค่าได้จริงครั้งล่าสุด
 static unsigned long last_scd40_recover = 0;   // สั่งกู้บัสครั้งล่าสุด (คนละอย่างกับข้างบน)
@@ -103,15 +110,31 @@ void initSensors() {
   I2C_0.begin(I2C_SDA_PIN, I2C_SCL_PIN, I2C_FREQ_HZ);
 
   // ==================== SCD40 ====================
-  scd40.begin(I2C_0, SCD40_I2C_ADDR_62);
-  scd40.stopPeriodicMeasurement();
-  delay(500);
-  if (scd40.startPeriodicMeasurement() == 0) {
-    scd40_initialized = true;
-    Serial.println("[SCD40] OK (Bus 0)");
-  } else {
-    scd40_initialized = false;
-    Serial.println("[SCD40] ERROR");
+  // ถ้าบอร์ดรีเซ็ตกลางการคุยกับเซนเซอร์ (เช่นตอนอัปโหลดเฟิร์มแวร์) slave อาจยังกด SDA
+  // ค้างอยู่ตั้งแต่ก่อนบูต begin() จะล้มเหลวทันทีโดยที่บัสยังไม่เคยถูกปลดล็อก
+  // เคลียร์บัสก่อนหนึ่งครั้งเสมอ แล้วถ้ายังไม่ผ่านค่อยเคลียร์ซ้ำอีกรอบก่อนยอมแพ้
+  i2cBusClear();
+  I2C_0.begin(I2C_SDA_PIN, I2C_SCL_PIN, I2C_FREQ_HZ);
+
+  scd40_initialized = false;
+  for (int attempt = 1; attempt <= 2 && !scd40_initialized; attempt++) {
+    scd40.begin(I2C_0, SCD40_I2C_ADDR_62);
+    scd40.stopPeriodicMeasurement();
+    delay(500);
+    if (scd40.startPeriodicMeasurement() == 0) {
+      scd40_initialized = true;
+      Serial.printf("[SCD40] OK (Bus 0)%s\n", attempt > 1 ? " — after bus-clear retry" : "");
+    } else if (attempt == 1) {
+      Serial.println("[SCD40] no response — clearing bus and retrying");
+      I2C_0.end();
+      delay(50);
+      i2cBusClear();
+      I2C_0.begin(I2C_SDA_PIN, I2C_SCL_PIN, I2C_FREQ_HZ);
+      delay(50);
+    } else {
+      // ไม่ถือเป็นจุดจบ: readSensors() จะพยายามกู้ต่อทุก 30 วิ เผื่อเซนเซอร์กลับมาเอง
+      Serial.println("[SCD40] ERROR — will keep retrying via bus recovery");
+    }
   }
 
   // ==================== SGP30 ====================
@@ -151,7 +174,9 @@ SensorData readSensors() {
   // เป็นค่าปัจจุบัน — อาการคือ "รีสตาร์ทแล้วยังขึ้นค่าเดิม" และผิดกฎ §5.6/§14 ที่ห้าม
   // ใช้ค่าเก่าแทนค่าปัจจุบัน ต้องเป็น No Data จนกว่าจะอ่านได้จริง
   // ใช้ตัวแปรแยกคุมจังหวะ recover แทน เพื่อไม่ให้กู้รัวทุกลูปเมื่อเซนเซอร์เงียบยาว
-  if (scd40_initialized && (now - last_scd40_read > 30000)
+  // เงื่อนไขนี้ไม่ผูกกับ scd40_initialized โดยตั้งใจ: ถ้า init ล้มเหลวตอนบูต การกู้บัสคือ
+  // ทางเดียวที่เซนเซอร์จะกลับมา ถ้ากันไว้ด้วย flag เซนเซอร์จะตายถาวรจนกว่าจะรีบูตเครื่อง
+  if ((now - last_scd40_read > 30000)
       && (last_scd40_recover == 0 || now - last_scd40_recover > 30000)) {
      recoverI2CBus();
      last_scd40_recover = now;
@@ -162,19 +187,28 @@ SensorData readSensors() {
   }
 
   // ==================== 1. อ่าน SCD40 ====================
-  if (scd40_initialized) {
+  // พยายามอ่านเสมอ ไม่ผูกกับ scd40_initialized: การกู้บัสจะไร้ผลถ้าเรายังไม่ยอมอ่านหลังกู้
+  // สำเร็จ ถ้าไม่มีเซนเซอร์อยู่จริง getDataReadyStatus() ก็คืนค่าล้มเหลวเงียบ ๆ ตามเดิม
+  {
     bool isReady = false;
     if (scd40.getDataReadyStatus(isReady) == 0 && isReady) {
       uint16_t co2; float t, h;
       if (scd40.readMeasurement(co2, t, h) == 0 && co2 > 0) {
-        currentData.co2 = (float)co2; 
-        currentData.temperature = t; 
+        currentData.co2 = (float)co2;
+        currentData.temperature = t;
         currentData.humidity = h;
-        last_scd40_read = now; 
+        last_scd40_read = now;
+        if (!scd40_initialized) {
+          scd40_initialized = true;
+          Serial.println("[SCD40] came back after bus recovery");
+        }
       }
     }
   }
-  currentData.scd40_valid = (now - last_scd40_read < 10000);
+  // last_*_read == 0 แปลว่า "ยังไม่เคยอ่านสำเร็จเลย" ต้องเช็คแยกเสมอ ไม่งั้นช่วงวินาทีแรก
+  // หลังบูต (now ยังน้อยกว่าเกณฑ์) จะถูกนับว่าเพิ่งอ่านสำเร็จ แล้ว currentData ที่ยังเป็น 0
+  // จากการ zero-init จะถูกส่งออกเป็นค่าที่วัดได้จริง — ศูนย์ที่แยกไม่ออกจากอากาศสะอาด
+  currentData.scd40_valid = (last_scd40_read != 0) && (now - last_scd40_read < 10000);
 
   // ==================== 2. อ่าน SGP30 ====================
   if (sgp30_initialized && isSensorReady()) {
@@ -190,7 +224,7 @@ SensorData readSensors() {
       }
     }
   }
-  currentData.sgp30_valid = (now - last_sgp30_read < 5000) && isSensorReady();
+  currentData.sgp30_valid = (last_sgp30_read != 0) && (now - last_sgp30_read < 5000) && isSensorReady();
 
   // ==================== 3. อ่าน PMS7003 ====================
   if (pms_initialized) {
@@ -205,7 +239,7 @@ SensorData readSensors() {
       }
     }
   }
-  currentData.pms_valid = (now - last_pms_read < 5000);
+  currentData.pms_valid = (last_pms_read != 0) && (now - last_pms_read < 5000);
 
   currentData.all_valid = (currentData.scd40_valid && currentData.pms_valid && currentData.sgp30_valid); 
   return currentData;
