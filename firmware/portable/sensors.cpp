@@ -21,7 +21,8 @@ static unsigned long sgp30_start_ms = 0;
 // ตัวแปรสำหรับจำค่าล่าสุด
 static SensorData currentData = {};
 static unsigned long last_pms_read   = 0;
-static unsigned long last_scd40_read = 0;
+static unsigned long last_scd40_read = 0;      // อ่านค่าได้จริงครั้งล่าสุด
+static unsigned long last_scd40_recover = 0;   // สั่งกู้บัสครั้งล่าสุด (คนละอย่างกับข้างบน)
 static unsigned long last_sgp30_read = 0;
 
 #define I2C_SDA_PIN 15
@@ -143,9 +144,21 @@ SensorData readSensors() {
   unsigned long now = millis();
 
   // ตรวจสอบสถานะการค้าง (ถ้า SCD40 เงียบเกิน 30 วินาที ให้สั่ง Reset Bus)
-  if (scd40_initialized && (now - last_scd40_read > 30000)) {
+  //
+  // last_scd40_read = "อ่านค่าได้จริงครั้งล่าสุด" เท่านั้น ห้ามเลื่อนตอน recover:
+  // การ recover ไม่ได้ทำให้มีค่าใหม่ ถ้าเลื่อนจะทำให้ scd40_valid (บรรทัดล่าง) กลับเป็น true
+  // ทันทีทั้งที่ currentData ยังเป็นค่าค้างจากก่อนบัสแฮงก์ แล้วค่าเก่านั้นจะถูกส่งออก BLE
+  // เป็นค่าปัจจุบัน — อาการคือ "รีสตาร์ทแล้วยังขึ้นค่าเดิม" และผิดกฎ §5.6/§14 ที่ห้าม
+  // ใช้ค่าเก่าแทนค่าปัจจุบัน ต้องเป็น No Data จนกว่าจะอ่านได้จริง
+  // ใช้ตัวแปรแยกคุมจังหวะ recover แทน เพื่อไม่ให้กู้รัวทุกลูปเมื่อเซนเซอร์เงียบยาว
+  if (scd40_initialized && (now - last_scd40_read > 30000)
+      && (last_scd40_recover == 0 || now - last_scd40_recover > 30000)) {
      recoverI2CBus();
-     last_scd40_read = now; 
+     last_scd40_recover = now;
+     // ทิ้งค่าค้างทันที: หลังกู้บัสยังไม่มีการวัดใหม่ ค่าก่อนแฮงก์ไม่ใช่สภาพปัจจุบันอีกต่อไป
+     currentData.co2 = NAN;
+     currentData.temperature = NAN;
+     currentData.humidity = NAN;
   }
 
   // ==================== 1. อ่าน SCD40 ====================
