@@ -105,9 +105,30 @@ void recoverI2CBus() {
   }
 }
 
+// สแกนบัส I2C แล้วรายงานว่าใครตอบบ้าง (SCD40 = 0x62, SGP30 = 0x58)
+// ใช้แยกให้ขาดว่า "เซนเซอร์ค้าง" (ตอบ address แต่ไม่ให้ข้อมูล) ต่างจาก "ไม่มีใครอยู่บนบัส"
+// (สายหลุด/ไฟไม่เข้า/พูลอัพหาย) ซึ่งซอฟต์แวร์แก้ไม่ได้ และเป็นคนละปัญหากันคนละทาง
+static void i2cScan() {
+  int found = 0;
+  Serial.print("[I2C] scanning bus...");
+  for (uint8_t addr = 0x08; addr < 0x78; addr++) {
+    I2C_0.beginTransmission(addr);
+    if (I2C_0.endTransmission() == 0) {
+      Serial.printf(" 0x%02X", addr);
+      found++;
+    }
+  }
+  if (found == 0) {
+    Serial.println(" NOTHING RESPONDS — check SDA/SCL wiring, 3V3 power and pull-ups");
+  } else {
+    Serial.printf("  (%d device%s)\n", found, found == 1 ? "" : "s");
+  }
+}
+
 void initSensors() {
   Serial.println("[Sensors] Initializing...");
   I2C_0.begin(I2C_SDA_PIN, I2C_SCL_PIN, I2C_FREQ_HZ);
+  i2cScan();
 
   // ==================== SCD40 ====================
   // ถ้าบอร์ดรีเซ็ตกลางการคุยกับเซนเซอร์ (เช่นตอนอัปโหลดเฟิร์มแวร์) slave อาจยังกด SDA
