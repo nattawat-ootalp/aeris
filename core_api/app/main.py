@@ -39,7 +39,7 @@ def health() -> dict:
 
 
 @app.get("/health/auth", tags=["meta"])
-def auth_health() -> dict:
+def auth_health(token: str | None = None) -> dict:
     """Whether the deployed process actually loaded its signing secrets.
 
     Reports only a length and a truncated SHA-256 fingerprint — never the secret itself. That
@@ -58,8 +58,34 @@ def auth_health() -> dict:
             "sha256_8": hashlib.sha256(secret.encode()).hexdigest()[:8],
         }
 
-    return {
+    # Sign and verify a throwaway token with the loaded secret. If this fails, the fault is
+    # in the library or the algorithm, not in any caller's token.
+    import jwt as _jwt
+
+    from .security import create_token, decode_token
+
+    try:
+        decode_token(create_token("self-check", hours=1))
+        round_trip = "ok"
+    except Exception as e:  # noqa: BLE001 - the class name is the diagnostic
+        round_trip = f"{type(e).__name__}: {e}"
+
+    result = {
         "jwt_algorithm": settings.JWT_ALGORITHM,
         "jwt_secret": fingerprint(settings.JWT_SECRET),
         "supabase_jwt_secret": fingerprint(settings.SUPABASE_JWT_SECRET),
+        "self_round_trip": round_trip,
+        "pyjwt_version": getattr(_jwt, "__version__", "unknown"),
     }
+    if token:
+        # Report WHY each path rejected a supplied token. The exception class alone usually
+        # names the cause (signature / expiry / audience) that the shared 401 hides.
+        from .security import decode_supabase_token
+
+        for label, fn in (("own", decode_token), ("supabase", decode_supabase_token)):
+            try:
+                fn(token)
+                result[f"{label}_verdict"] = "accepted"
+            except Exception as e:  # noqa: BLE001
+                result[f"{label}_verdict"] = f"{type(e).__name__}: {e}"
+    return result
