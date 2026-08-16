@@ -11,7 +11,7 @@ import { colors, type } from '../../theme';
 
 export function PersonalBaselineScreen() {
   const activeDeviceId = useActiveDeviceId();
-  const { data, loading, error, noDevice, reload } = useRemote(
+  const { data, loading, error, noDevice, unauthenticated, reload } = useRemote(
     useCallback(() => withDevice(activeDeviceId, getPersonalBaseline), [activeDeviceId]),
   );
 
@@ -20,7 +20,7 @@ export function PersonalBaselineScreen() {
       {loading ? (
         <LoadingState />
       ) : error ? (
-        noDevice ? <EmptyState title="ยังไม่มีอุปกรณ์สำหรับแสดงข้อมูล" /> : <ErrorState reason="Could not load your baseline" onRetry={reload} />
+        unauthenticated ? <EmptyState title="ยังเชื่อมต่อบัญชีไม่ได้ — ข้อมูลส่วนตัวต้องลงชื่อเข้าใช้ก่อน" /> : noDevice ? <EmptyState title="ยังไม่มีอุปกรณ์สำหรับแสดงข้อมูล" /> : <ErrorState reason="Could not load your baseline" onRetry={reload} />
       ) : !data?.ready ? (
         // Below the minimum sample count the engine refuses to personalize (§5.4) — say so
         // instead of showing a range that isn't established yet.

@@ -14,7 +14,7 @@ function percent(value: number | null): string {
 
 export function PersonalPatternScreen() {
   const activeDeviceId = useActiveDeviceId();
-  const { data, loading, error, noDevice, reload } = useRemote(
+  const { data, loading, error, noDevice, unauthenticated, reload } = useRemote(
     useCallback(() => withDevice(activeDeviceId, (id) => getPersonalPattern(id, 30)), [activeDeviceId]),
   );
 
@@ -23,7 +23,7 @@ export function PersonalPatternScreen() {
       {loading ? (
         <LoadingState />
       ) : error ? (
-        noDevice ? <EmptyState title="ยังไม่มีอุปกรณ์สำหรับแสดงข้อมูล" /> : <ErrorState reason="Could not load your pattern" onRetry={reload} />
+        unauthenticated ? <EmptyState title="ยังเชื่อมต่อบัญชีไม่ได้ — ข้อมูลส่วนตัวต้องลงชื่อเข้าใช้ก่อน" /> : noDevice ? <EmptyState title="ยังไม่มีอุปกรณ์สำหรับแสดงข้อมูล" /> : <ErrorState reason="Could not load your pattern" onRetry={reload} />
       ) : !data || data.sample_size === 0 ? (
         <EmptyState title="ยังไม่มีเหตุการณ์อาการที่บันทึกไว้ในช่วง 30 วัน" />
       ) : (

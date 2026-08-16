@@ -14,7 +14,7 @@ type Props = NativeStackScreenProps<HistoryStackParamList, 'WeeklyHistory'>;
 
 export function WeeklyHistoryScreen({ navigation }: Props) {
   const activeDeviceId = useActiveDeviceId();
-  const { data, loading, error, noDevice, reload } = useRemote(
+  const { data, loading, error, noDevice, unauthenticated, reload } = useRemote(
     useCallback(() => withDevice(activeDeviceId, (id) => getWeeklyHistory(id, 7)), [activeDeviceId]),
   );
 
@@ -29,7 +29,7 @@ export function WeeklyHistoryScreen({ navigation }: Props) {
       {loading ? (
         <LoadingState />
       ) : error ? (
-        noDevice ? <EmptyState title="ยังไม่มีอุปกรณ์สำหรับแสดงข้อมูล" /> : <ErrorState reason="Could not load your history" onRetry={reload} />
+        unauthenticated ? <EmptyState title="ยังเชื่อมต่อบัญชีไม่ได้ — ข้อมูลส่วนตัวต้องลงชื่อเข้าใช้ก่อน" /> : noDevice ? <EmptyState title="ยังไม่มีอุปกรณ์สำหรับแสดงข้อมูล" /> : <ErrorState reason="Could not load your history" onRetry={reload} />
       ) : !hasAny ? (
         <EmptyState title="ยังไม่มีข้อมูลย้อนหลังเพียงพอ" />
       ) : (

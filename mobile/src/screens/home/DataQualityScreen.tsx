@@ -45,7 +45,7 @@ function continuityLabel(gaps: number | null, coverage: number | null): string {
 
 export function DataQualityScreen() {
   const activeDeviceId = useActiveDeviceId();
-  const { data, loading, error, noDevice, reload } = useRemote(
+  const { data, loading, error, noDevice, unauthenticated, reload } = useRemote(
     useCallback(() => withDevice(activeDeviceId, getDataQuality), [activeDeviceId]),
   );
 
@@ -54,7 +54,7 @@ export function DataQualityScreen() {
       {loading ? (
         <LoadingState />
       ) : error || !data ? (
-        noDevice ? <EmptyState title="ยังไม่มีอุปกรณ์สำหรับแสดงข้อมูล" /> : <ErrorState reason="Could not load data quality" onRetry={reload} />
+        unauthenticated ? <EmptyState title="ยังเชื่อมต่อบัญชีไม่ได้ — ข้อมูลส่วนตัวต้องลงชื่อเข้าใช้ก่อน" /> : noDevice ? <EmptyState title="ยังไม่มีอุปกรณ์สำหรับแสดงข้อมูล" /> : <ErrorState reason="Could not load data quality" onRetry={reload} />
       ) : !data.has_data ? (
         <EmptyState title="No readings available for this device" />
       ) : (

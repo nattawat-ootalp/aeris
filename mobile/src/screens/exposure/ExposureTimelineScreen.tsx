@@ -15,7 +15,7 @@ type Props = NativeStackScreenProps<ExposureStackParamList, 'ExposureTimeline'>;
 
 export function ExposureTimelineScreen({ navigation }: Props) {
   const activeDeviceId = useActiveDeviceId();
-  const { data, loading, error, noDevice, reload } = useRemote(
+  const { data, loading, error, noDevice, unauthenticated, reload } = useRemote(
     useCallback(() => withDevice(activeDeviceId, (id) => getExposureTimeline(id, 24)), [activeDeviceId]),
   );
   const events = data?.events ?? [];
@@ -34,7 +34,7 @@ export function ExposureTimelineScreen({ navigation }: Props) {
       {loading ? (
         <LoadingState />
       ) : error ? (
-        noDevice ? <EmptyState title="ยังไม่มีอุปกรณ์สำหรับแสดงข้อมูล" /> : <ErrorState reason="Could not load your timeline" onRetry={reload} />
+        unauthenticated ? <EmptyState title="ยังเชื่อมต่อบัญชีไม่ได้ — ข้อมูลส่วนตัวต้องลงชื่อเข้าใช้ก่อน" /> : noDevice ? <EmptyState title="ยังไม่มีอุปกรณ์สำหรับแสดงข้อมูล" /> : <ErrorState reason="Could not load your timeline" onRetry={reload} />
       ) : (
         <FlatList
           data={events}

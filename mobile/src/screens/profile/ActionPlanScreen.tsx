@@ -9,7 +9,7 @@
 import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { getActionPlan, saveActionPlan } from '../../api/client';
-import { ErrorState, InfoCard, LoadingState, PrimaryButton, SectionLabel } from '../../components/ui';
+import { EmptyState, ErrorState, InfoCard, LoadingState, PrimaryButton, SectionLabel } from '../../components/ui';
 import { Screen } from '../../components/Screen';
 import { useRemote } from '../../lib/useRemote';
 import { colors, radius, space, statusColor, type } from '../../theme';
@@ -29,7 +29,7 @@ function bandColor(status: WatchStatus | 'Emergency'): string {
 }
 
 export function ActionPlanScreen() {
-  const { data, loading, error, reload } = useRemote<ActionPlan>(useCallback(() => getActionPlan(), []));
+  const { data, loading, error, unauthenticated, reload } = useRemote<ActionPlan>(useCallback(() => getActionPlan(), []));
   const [draft, setDraft] = useState<Record<StepKey, string> | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -44,7 +44,7 @@ export function ActionPlanScreen() {
   if (error || !data) {
     return (
       <Screen title="Action Plan" subtitle="แผนรับมือที่คุณหรือแพทย์กำหนดไว้">
-        <ErrorState reason="Could not load your action plan" onRetry={reload} />
+        {unauthenticated ? <EmptyState title="ยังเชื่อมต่อบัญชีไม่ได้ — ข้อมูลส่วนตัวต้องลงชื่อเข้าใช้ก่อน" /> : <ErrorState reason="Could not load your action plan" onRetry={reload} />}
       </Screen>
     );
   }

@@ -29,9 +29,24 @@ import type {
 
 export const BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
+/** An HTTP failure that keeps its status, so callers can tell "you are not signed in" (401)
+ *  apart from "the server is down" — the two are indistinguishable in a plain message and
+ *  lead the user to completely different fixes. */
+export class ApiError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message);
+    this.name = 'ApiError';
+  }
+
+  /** No usable session: either sign-in never happened or the backend rejected the token. */
+  get unauthenticated(): boolean {
+    return this.status === 401 || this.status === 403;
+  }
+}
+
 async function getJson<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`);
-  if (!res.ok) throw new Error(`GET ${path} -> ${res.status}`);
+  if (!res.ok) throw new ApiError(res.status, `GET ${path} -> ${res.status}`);
   return (await res.json()) as T;
 }
 
@@ -42,7 +57,7 @@ async function getJsonAuthed<T>(path: string): Promise<T> {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
   });
-  if (!res.ok) throw new Error(`GET ${path} -> ${res.status}`);
+  if (!res.ok) throw new ApiError(res.status, `GET ${path} -> ${res.status}`);
   return (await res.json()) as T;
 }
 
@@ -56,7 +71,7 @@ async function sendJsonAuthed<T>(method: 'POST' | 'PUT', path: string, body: unk
     },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`${method} ${path} -> ${res.status}`);
+  if (!res.ok) throw new ApiError(res.status, `${method} ${path} -> ${res.status}`);
   return (await res.json()) as T;
 }
 
@@ -70,7 +85,7 @@ async function deleteAuthed<T>(path: string): Promise<T> {
     method: 'DELETE',
     headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
   });
-  if (!res.ok) throw new Error(`DELETE ${path} -> ${res.status}`);
+  if (!res.ok) throw new ApiError(res.status, `DELETE ${path} -> ${res.status}`);
   return (await res.json()) as T;
 }
 
@@ -143,7 +158,7 @@ export async function ingestPortable(payload: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error(`POST /ingest/portable -> ${res.status}`);
+  if (!res.ok) throw new ApiError(res.status, `POST /ingest/portable -> ${res.status}`);
   return (await res.json()) as { accepted: boolean };
 }
 

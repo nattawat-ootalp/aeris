@@ -15,7 +15,7 @@ import { colors, radius, space, type } from '../../theme';
 import type { EmergencyContact } from '../../types';
 
 export function EmergencyContactsScreen() {
-  const { data, loading, error, reload } = useRemote<{ contacts: EmergencyContact[] }>(
+  const { data, loading, error, unauthenticated, reload } = useRemote<{ contacts: EmergencyContact[] }>(
     useCallback(() => getContacts(), []),
   );
   const [name, setName] = useState('');
@@ -69,7 +69,7 @@ export function EmergencyContactsScreen() {
       {loading ? (
         <LoadingState />
       ) : error || !data ? (
-        <ErrorState reason="Could not load your contacts" onRetry={reload} />
+        unauthenticated ? <EmptyState title="ยังเชื่อมต่อบัญชีไม่ได้ — ข้อมูลส่วนตัวต้องลงชื่อเข้าใช้ก่อน" /> : <ErrorState reason="Could not load your contacts" onRetry={reload} />
       ) : data.contacts.length === 0 ? (
         <EmptyState title="ยังไม่ได้เพิ่มผู้ติดต่อ" />
       ) : (

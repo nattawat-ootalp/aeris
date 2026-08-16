@@ -10,6 +10,12 @@ but shipped as `1.0.0`, so the numbering continues from there rather than renumb
 
 `versionCode` is the Android install counter — it only ever increases, one per release build.
 
+## 1.4.2 — `versionCode 7` (2026-08-16)
+
+- Failed requests keep their HTTP status, so the app distinguishes "not signed in" (401/403)
+  from "the server is unreachable". Every authenticated screen said "Could not load…" for
+  both, which points the user at the wrong fix.
+
 ## 1.4.1 — `versionCode 6` (2026-08-16)
 
 - Every sensor key (`pm25`, `temperature`, `humidity`, `co2`, `tvoc`, `eco2`) is always present
