@@ -74,6 +74,26 @@ On receiving it the phone: records the event via `POST /sos` (which applies the 
 location consent server-side), shows the user's own action plan, and shows the contacts the
 user marked `notify_on_sos`. **Nothing is sent to anyone automatically.**
 
+## Building and flashing the portable
+
+Board: **ESP32-S3**. Flash with the Arduino IDE's bundled CLI:
+
+```
+arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc firmware/portable
+arduino-cli upload -p COM13 --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc firmware/portable
+```
+
+`CDCOnBoot=cdc` is **required**, not cosmetic. The board option defaults to *Disabled*, which
+routes `Serial` to the UART0 pins instead of USB — the sketch then runs correctly but prints
+nothing to the USB port, which looks exactly like a failed flash. Keep the same option on
+compile and upload.
+
+`firmware/portable/config.h` is gitignored; copy `config.example.h` to it before the first
+build. Define `SOS_BUTTON_PIN` there only on units that actually have the button wired.
+
+Verified on 2026-08-15: telemetry frames are 143–145 bytes with every field present, well
+inside the 180-byte budget above.
+
 ## Phone gateway responsibilities
 1. Show live telemetry from the Notify characteristic immediately (local, works with no internet).
    Subscribe to the SOS characteristic at the same time — an SOS raised while the app is in the
