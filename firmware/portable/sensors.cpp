@@ -31,6 +31,7 @@ static unsigned long last_pms_read   = 0;
 static unsigned long last_scd40_read = 0;      // อ่านค่าได้จริงครั้งล่าสุด
 static unsigned long last_scd40_recover = 0;   // สั่งกู้บัสครั้งล่าสุด (คนละอย่างกับข้างบน)
 static unsigned long last_sgp30_read = 0;
+static unsigned long last_sgp30_retry = 0;   // จังหวะลองปลุก SGP30 กลับมา
 
 #define I2C_SDA_PIN 15
 #define I2C_SCL_PIN 16
@@ -246,6 +247,26 @@ SensorData readSensors() {
     }
   }
   currentData.sgp30_valid = (last_sgp30_read != 0) && (now - last_sgp30_read < 5000) && isSensorReady();
+
+  // SGP30 ต้องมี watchdog ของตัวเอง: ตัวข้างบนดูแค่ SCD40 ถ้า SCD40 ยังอ่านได้ปกติจะไม่มีการ
+  // กู้เกิดขึ้นเลย แล้ว SGP30 ที่หลุดไป (สายหลวม ไฟกระพริบ ถอดออกมาเสียบใหม่) จะเงียบถาวร
+  // จนกว่าจะรีบูตเครื่อง — ซึ่งเป็นสิ่งที่เพิ่งเกิดขึ้นจริงตอนสาย GND หลุด
+  // จงใจไม่รีเซ็ตบัสรวมตรงนี้: ถ้า SCD40 กำลังอ่านได้ดี การล้างบัสจะทำให้ตัวที่ยังทำงานอยู่
+  // สะดุดโดยไม่จำเป็น แค่ลอง begin() ใหม่ก็พอสำหรับกรณีที่ตัวมันเองหลุดไป
+  if (!currentData.sgp30_valid && (now - last_sgp30_read > 30000)
+      && (last_sgp30_retry == 0 || now - last_sgp30_retry > 30000)) {
+    last_sgp30_retry = now;
+    i2cScan();
+    if (sgp30.begin(I2C_0) == true) {
+      sgp30.initAirQuality();
+      sgp30_start_ms = now;
+      sgp30_initialized = true;
+      Serial.println("[SGP30] found again — warming up");
+    } else {
+      sgp30_initialized = false;
+      Serial.println("[SGP30] still not on the bus");
+    }
+  }
 
   // ==================== 3. อ่าน PMS7003 ====================
   if (pms_initialized) {
