@@ -6,6 +6,8 @@ httpx==0.28.1
 python-dotenv==1.0.1
 influxdb-client==1.48.0
 paho-mqtt==2.1.0
-PyJWT==2.10.1
+# [crypto] pulls in `cryptography`, required to verify Supabase's ES256 access tokens
+# against the project's published JWKS (see core_api/app/security.py).
+PyJWT[crypto]==2.10.1
 passlib[bcrypt]==1.7.4
 python-dateutil==2.9.0.post0

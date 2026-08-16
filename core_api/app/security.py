@@ -43,9 +43,53 @@ def decode_token(token: str) -> dict:
     )
 
 
+_jwks_client: jwt.PyJWKClient | None = None
+
+
+def _supabase_jwks() -> jwt.PyJWKClient | None:
+    """Cached JWKS client for the project's published signing keys.
+
+    Supabase issues **ES256** access tokens signed with an asymmetric key pair and publishes
+    the public half at this endpoint (no apikey required). The legacy shared HS256 secret still
+    exists in the dashboard but does not verify these tokens, so a project that has moved to
+    signing keys cannot be supported by the secret alone.
+    """
+    global _jwks_client
+    if _jwks_client is None and settings.SUPABASE_URL:
+        _jwks_client = jwt.PyJWKClient(
+            f"{settings.SUPABASE_URL}/auth/v1/.well-known/jwks.json",
+            cache_keys=True,
+            timeout=5,
+        )
+    return _jwks_client
+
+
 def decode_supabase_token(token: str) -> dict:
     """Verify a Supabase Auth access token (email or anonymous sign-in) — mobile clients
-    authenticate this way so RLS policies key on the same `auth.uid()` as the token's `sub`."""
+    authenticate this way so RLS policies key on the same `auth.uid()` as the token's `sub`.
+
+    Handles both signing schemes a project may be on: asymmetric (ES256/RS256, verified
+    against the published JWKS) and the older shared HS256 secret. The algorithm in the token
+    header decides which, so a project can migrate without a backend change.
+    """
+    header = jwt.get_unverified_header(token)
+    alg = header.get("alg", "")
+
+    if alg.startswith(("ES", "RS")):
+        client = _supabase_jwks()
+        if client is None:
+            raise jwt.InvalidKeyError("SUPABASE_URL is not configured")
+        key = client.get_signing_key_from_jwt(token).key
+        return jwt.decode(
+            token,
+            key,
+            algorithms=[alg],
+            audience="authenticated",
+            leeway=CLOCK_SKEW_LEEWAY_SEC,
+        )
+
+    if not settings.SUPABASE_JWT_SECRET:
+        raise jwt.InvalidKeyError("SUPABASE_JWT_SECRET is not configured")
     return jwt.decode(
         token,
         settings.SUPABASE_JWT_SECRET,
