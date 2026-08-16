@@ -127,3 +127,40 @@ def test_decision_contract_reports_when_the_reading_was_taken():
     )
     assert body["measured_at"] == taken.isoformat()
     assert body["tvoc"] == 110.0 and body["eco2"] == 460.0 and body["co2"] == 800.0
+
+
+def test_a_token_from_a_slightly_fast_clock_is_still_accepted():
+    """Tokens come from phones and from Supabase, whose clocks are not synchronised with the
+    backend's. Without leeway a clock one second ahead produces an unexplained, intermittent
+    401 (ImmatureSignatureError) on a token that is otherwise perfectly valid."""
+    import jwt
+
+    from core_api.app.security import decode_token
+    from ingestion.app.config import settings
+
+    future = datetime.now(UTC) + timedelta(seconds=10)
+    token = jwt.encode(
+        {"sub": "u1", "iat": future, "exp": future + timedelta(hours=1)},
+        settings.JWT_SECRET,
+        algorithm=settings.JWT_ALGORITHM,
+    )
+    assert decode_token(token)["sub"] == "u1"
+
+
+def test_a_token_from_a_wildly_wrong_clock_is_still_rejected():
+    """The leeway is slack for clock drift, not an open door: a token minted far in the future
+    must still fail."""
+    import jwt
+    import pytest
+
+    from core_api.app.security import decode_token
+    from ingestion.app.config import settings
+
+    far = datetime.now(UTC) + timedelta(hours=2)
+    token = jwt.encode(
+        {"sub": "u1", "iat": far, "exp": far + timedelta(hours=1)},
+        settings.JWT_SECRET,
+        algorithm=settings.JWT_ALGORITHM,
+    )
+    with pytest.raises(jwt.PyJWTError):
+        decode_token(token)
