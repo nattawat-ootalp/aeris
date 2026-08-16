@@ -36,3 +36,30 @@ app.include_router(ws_router)
 @app.get("/health", tags=["meta"])
 def health() -> dict:
     return {"status": "ok", "service": "aeris-core-api"}
+
+
+@app.get("/health/auth", tags=["meta"])
+def auth_health() -> dict:
+    """Whether the deployed process actually loaded its signing secrets.
+
+    Reports only a length and a truncated SHA-256 fingerprint — never the secret itself. That
+    is enough to tell "not configured" from "configured with a different value than expected",
+    which the shared 401 "invalid token" response cannot distinguish and which otherwise takes
+    a deploy per guess to find.
+    """
+    import hashlib
+
+    def fingerprint(secret: str) -> dict:
+        if not secret:
+            return {"configured": False, "length": 0, "sha256_8": None}
+        return {
+            "configured": True,
+            "length": len(secret),
+            "sha256_8": hashlib.sha256(secret.encode()).hexdigest()[:8],
+        }
+
+    return {
+        "jwt_algorithm": settings.JWT_ALGORITHM,
+        "jwt_secret": fingerprint(settings.JWT_SECRET),
+        "supabase_jwt_secret": fingerprint(settings.SUPABASE_JWT_SECRET),
+    }
