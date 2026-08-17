@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { getDeviceDecision, getForecast, getRisk } from '../../api/client';
-import { InfoCard, LoadingState } from '../../components/ui';
+import { Columns, InfoCard, LoadingState } from '../../components/ui';
 import { HeroStatusCard } from '../../components/WatchStatus';
 import { Screen } from '../../components/Screen';
 import { clockLabel, measuredAtLabel } from '../../lib/format';
@@ -86,7 +86,7 @@ export function HomeScreen({ navigation }: Props) {
       {remote.loading && !usingLocal ? (
         <LoadingState />
       ) : (
-        <>
+        <Columns>
           <HeroStatusCard
             status={status}
             pm25={pm25}
@@ -131,7 +131,7 @@ export function HomeScreen({ navigation }: Props) {
               </View>
             </View>
           </InfoCard>
-        </>
+        </Columns>
       )}
 
       {remote.data ? (
@@ -149,8 +149,10 @@ export function HomeScreen({ navigation }: Props) {
         </InfoCard>
       ) : null}
 
-      <RiskCard risk={risk} />
-      <ForecastCard forecast={forecast} />
+      <Columns>
+        <RiskCard risk={risk} />
+        <ForecastCard forecast={forecast} />
+      </Columns>
 
       <Pressable
         onPress={() => navigation.getParent()?.navigate('Sos' as never)}

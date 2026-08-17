@@ -40,8 +40,7 @@
       body {
         overflow: hidden;
         margin: 0;
-        /* Backdrop shown around the app frame on wide screens. */
-        background: radial-gradient(120% 120% at 50% 0%, #eaf2f1 0%, #e6eaf2 55%, #dfe4ee 100%);
+        background: #f4f6fb;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
       }
@@ -52,28 +51,11 @@
         background: #f4f6fb;
       }
 
-      /* The Aeris UI is a phone layout. Stretching it edge-to-edge on a monitor makes every
-         row a metre wide and unreadable, so on wide viewports we centre it in a device-width
-         frame instead. Below this breakpoint the app fills the screen exactly as on mobile. */
-      @media (min-width: 700px) {
-        body {
-          overflow: auto;
-        }
-        #root {
-          width: 100%;
-          max-width: 460px;
-          margin: 0 auto;
-          box-shadow: 0 24px 70px rgba(15, 23, 42, 0.16), 0 2px 8px rgba(15, 23, 42, 0.06);
-        }
-      }
-      @media (min-width: 700px) and (min-height: 900px) {
-        #root {
-          height: calc(100% - 48px);
-          margin: 24px auto;
-          border-radius: 28px;
-          overflow: hidden;
-        }
-      }
+      /* #root deliberately has no max-width. A wide viewport is handled inside the app
+         (src/lib/responsive.ts): past 720px the tab bar becomes a left rail and each screen
+         caps its own text column, so the page uses the whole window without any line running
+         the full width of a monitor. Framing the app in a fixed 460px card here instead would
+         also freeze the phone layout on a desktop, which is what it used to do. */
 
       /* Pre-hydration splash: the JS bundle is ~1.7 MB, so without this the visitor stares at
          a blank page on a slow connection. Removed automatically once React mounts into #root. */

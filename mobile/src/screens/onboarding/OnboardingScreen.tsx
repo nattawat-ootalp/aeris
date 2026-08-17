@@ -3,19 +3,22 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { StyleSheet, Text, View } from 'react-native';
 import { PrimaryButton } from '../../components/ui';
 import { markOnboarded } from '../../lib/onboarding';
+import { useMeasureStyle } from '../../lib/responsive';
 import { colors, radius, space, type } from '../../theme';
 import type { RootStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Onboarding'>;
 
 export function OnboardingScreen({ navigation }: Props) {
+  // Capped and centred on a desktop; unchanged on a phone (src/lib/responsive.ts).
+  const measure = useMeasureStyle();
   async function start() {
     await markOnboarded();
     navigation.replace('Main');
   }
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, measure]}>
       <Text style={styles.logo}>Aeris</Text>
       <View style={styles.center}>
         <View style={styles.deviceArt} />

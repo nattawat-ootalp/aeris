@@ -6,6 +6,7 @@ import { getRanking } from '../../api/client';
 import { LongdoMap } from '../../components/LongdoMap';
 import { EmptyState, ErrorState, LoadingState } from '../../components/ui';
 import { freshnessLabel, isStale } from '../../lib/format';
+import { useMeasureStyle } from '../../lib/responsive';
 import { useRemote } from '../../lib/useRemote';
 import { colors, space, statusColor, type } from '../../theme';
 import type { ExploreStackParamList } from '../../navigation/types';
@@ -15,6 +16,9 @@ type Props = NativeStackScreenProps<ExploreStackParamList, 'ExploreMap'>;
 
 export function ExploreMapScreen({ navigation }: Props) {
   const { data, loading, error, reload } = useRemote(useCallback(() => getRanking(20), []));
+  // The map wants the whole canvas on a desktop; the search field and the station sheet are
+  // controls, and a control stretched across a monitor is unusable — so only those are capped.
+  const measure = useMeasureStyle();
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [query, setQuery] = useState('');
 
@@ -30,7 +34,7 @@ export function ExploreMapScreen({ navigation }: Props) {
 
   return (
     <View style={styles.root}>
-      <View style={styles.searchBar}>
+      <View style={[styles.searchBar, measure]}>
         <TextInput
           style={styles.search}
           value={query}
@@ -56,6 +60,7 @@ export function ExploreMapScreen({ navigation }: Props) {
 
       {matches.length > 0 ? (
         <View style={styles.sheet}>
+          <View style={[styles.sheetInner, measure]}>
           <View style={styles.sheetHandle} />
           {matches.length > 1 ? (
             <View style={styles.pickRow}>
@@ -82,6 +87,7 @@ export function ExploreMapScreen({ navigation }: Props) {
               }
             />
           ) : null}
+          </View>
         </View>
       ) : null}
     </View>
@@ -109,6 +115,7 @@ const styles = StyleSheet.create({
   searchBar: { padding: space.md, paddingTop: space.xl },
   search: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: space.sm, color: colors.text },
   mapWrap: { flex: 1, marginHorizontal: space.md, marginBottom: space.md, borderRadius: 16, overflow: 'hidden' },
+  sheetInner: { gap: 0 },
   sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: space.md, borderTopWidth: 1, borderColor: colors.border },
   sheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: space.sm },
   pickRow: { flexDirection: 'row', gap: space.sm, marginBottom: space.sm },

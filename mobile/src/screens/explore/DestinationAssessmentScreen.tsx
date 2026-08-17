@@ -5,6 +5,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { assessDestination } from '../../api/client';
 import { LoadingState, SecondaryButton } from '../../components/ui';
 import { HeroStatusCard } from '../../components/WatchStatus';
+import { useMeasureStyle } from '../../lib/responsive';
 import { colors, space, type } from '../../theme';
 import type { ExploreStackParamList } from '../../navigation/types';
 import type { DestinationAssessment } from '../../types';
@@ -12,6 +13,8 @@ import type { DestinationAssessment } from '../../types';
 type Props = NativeStackScreenProps<ExploreStackParamList, 'DestinationAssessment'>;
 
 export function DestinationAssessmentScreen({ route, navigation }: Props) {
+  // Capped and centred on a desktop; unchanged on a phone (src/lib/responsive.ts).
+  const measure = useMeasureStyle();
   const { name, lat, lon } = route.params;
   const [state, setState] = useState<{ loading: boolean; error?: string; data?: DestinationAssessment }>({ loading: true });
 
@@ -22,7 +25,7 @@ export function DestinationAssessmentScreen({ route, navigation }: Props) {
   }, [lat, lon]);
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, measure]}>
       <Text style={styles.title}>{name}</Text>
       {state.loading ? (
         <LoadingState />

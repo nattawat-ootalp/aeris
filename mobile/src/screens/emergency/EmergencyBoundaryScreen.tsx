@@ -6,14 +6,17 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { StyleSheet, Text, View } from 'react-native';
 import { PrimaryButton } from '../../components/ui';
+import { useMeasureStyle } from '../../lib/responsive';
 import { colors, space, type } from '../../theme';
 import type { RootStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'EmergencyBoundary'>;
 
 export function EmergencyBoundaryScreen({ navigation }: Props) {
+  // Capped and centred on a desktop; unchanged on a phone (src/lib/responsive.ts).
+  const measure = useMeasureStyle();
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, measure]}>
       <Text style={styles.title}>Your event has been recorded</Text>
       <Text style={styles.body}>
         Aeris tracks environmental exposure and what you report feeling. It does not diagnose

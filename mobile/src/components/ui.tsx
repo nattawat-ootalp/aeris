@@ -1,7 +1,8 @@
 /** Aeris component library (UX/UI Spec §26) — modernized: soft elevation, gradients, rhythm. */
 import { LinearGradient } from 'expo-linear-gradient';
-import type { ReactNode } from 'react';
+import { Children, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useIsWide } from '../lib/responsive';
 import { colors, radius, shadow, shadowSm, space, type } from '../theme';
 
 // ── Buttons ──
@@ -85,6 +86,25 @@ export function SectionLabel({ children }: { children: ReactNode }) {
   return <Text style={styles.sectionLabel}>{children}</Text>;
 }
 
+// ── Responsive columns ──
+/**
+ * Lays its children side by side once the viewport is wider than a phone, and stacks them
+ * otherwise. Every column is equal width, so a card pair reads as a row on a desktop without
+ * either screen needing its own breakpoint logic.
+ */
+export function Columns({ children }: { children: ReactNode }) {
+  const wide = useIsWide();
+  const items = Children.toArray(children);
+  if (!wide || items.length < 2) return <View style={styles.columnStack}>{items}</View>;
+  return (
+    <View style={styles.columnRow}>
+      {items.map((child, i) => (
+        <View key={i} style={styles.column}>{child}</View>
+      ))}
+    </View>
+  );
+}
+
 // ── Metadata row (label/value) ──
 export function MetaRow({ label, value }: { label: string; value: string }) {
   return (
@@ -136,6 +156,9 @@ const styles = StyleSheet.create({
   stateTitle: { ...type.body, color: colors.textMuted, textAlign: 'center' },
   skeleton: { backgroundColor: colors.divider, borderRadius: radius.md, width: '100%' },
   sectionLabel: { ...type.overline, color: colors.textFaint, textTransform: 'uppercase' },
+  columnStack: { gap: space.md },
+  columnRow: { flexDirection: 'row', gap: space.md, alignItems: 'stretch' },
+  column: { flex: 1, gap: space.md },
   metaRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: space.sm, alignItems: 'center' },
   metaLabel: { ...type.secondary, color: colors.textMuted },
   metaValue: { ...type.bodyStrong, color: colors.text },
