@@ -41,9 +41,9 @@ Station (AirSentinel node) ──MQTT/TLS──▶ HiveMQ Cloud ──webhook─
 | `ingestion/` | One validation layer for both transports (station webhook + portable POST) → InfluxDB + Supabase. |
 | `intelligence/` | Pure-Python, testable: quality · exposure · baseline · pattern · decision · persistence/hysteresis/cooldown · explainability (TDD §5). |
 | `core-api/` | FastAPI: telemetry/history/alerts/ranking/threshold, decision/exposure/symptom, Destination Assessment (§6), `WS /ws/realtime`. |
-| `mobile/` | React Native (Expo). MVP screens + Watch (Normal/Caution/High/No Data). |
+| `mobile/` | React Native (Expo). MVP screens + Watch (Normal/Caution/High/No Data). Also the **web** build — same source, exported through `react-native-web`. |
 | `infra/` | Dockerfile, `render.yaml`, Supabase SQL+RLS migrations, Influx tasks. |
-| `docs/` | `aeris-tdd.md` (spec), `DECISIONS.md` (trade-offs). |
+| `docs/` | `aeris-tdd.md` (spec), `DECISIONS.md` (trade-offs), `WEB.md` (public website). |
 | `.github/workflows/` | CI: ruff + pytest → build → GHCR → Render deploy. |
 
 ## Local development
@@ -59,6 +59,23 @@ uvicorn core_api.app.main:app --reload   # http://localhost:8000/docs
 ```
 
 > Docker is **not** required locally — images build in CI. Local Python is 3.14; the deployed runtime is pinned to 3.12.
+
+```bash
+# App (mobile + web — one codebase)
+cd mobile && npm install
+npm run web                # dev server in a browser
+npm run build:web          # static site -> mobile/dist
+npm run preview:web        # serve that build at http://localhost:4173
+npm run check              # typecheck + no-SAFE + no-hardcode guards
+```
+
+## Public website
+
+The website **is** the app: `mobile/` exported with `expo export --platform web`, deployed as a
+static site (`vercel.json` / `netlify.toml`) and talking to the same Render API. Every screen has
+a real URL; BLE pairing is the one capability a browser cannot provide and reports *No Data*
+rather than pretending. Setup, environment variables and the required `CORS_ORIGINS` value are in
+**[docs/WEB.md](docs/WEB.md)**.
 
 ## Build phases (TDD §11)
 

@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+# symptom_events and all personal exposure data live behind auth + Supabase RLS (TDD §9) and
+# are never rendered on a public route, so there is nothing private for a crawler to reach.

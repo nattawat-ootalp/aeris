@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useOnboarded } from './src/lib/onboarding';
+import { documentTitle, linking } from './src/navigation/linking';
 import { MainTabs } from './src/navigation/MainTabs';
 import type { RootStackParamList } from './src/navigation/types';
 import { EmergencyBoundaryScreen } from './src/screens/emergency/EmergencyBoundaryScreen';
@@ -33,7 +34,10 @@ export default function App() {
     <SafeAreaProvider>
       <PortableProvider>
         <StatusBar style="dark" />
-        <NavigationContainer>
+        {/* Gives every screen its own URL in the web build (and keeps `aeris://` deep links
+            working on device). `/` is unmapped on purpose so the onboarding flag below, not
+            the address bar, decides the first screen — see src/navigation/linking.ts. */}
+        <NavigationContainer linking={linking} documentTitle={documentTitle}>
           <RootStack.Navigator
             initialRouteName={onboarded ? 'Main' : 'Onboarding'}
             screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}

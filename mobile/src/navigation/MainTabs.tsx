@@ -30,9 +30,11 @@ export function MainTabs() {
           backgroundColor: colors.surface,
           borderTopColor: colors.border,
           borderTopWidth: 1,
-          height: Platform.OS === 'ios' ? 88 : 68,
+          // Web needs more room than Android: a browser has no home-indicator inset to absorb
+          // the label's descenders, so 68 crops "Exposure"/"Explore" at the bottom edge.
+          height: Platform.select({ ios: 88, web: 78, default: 68 }),
           paddingTop: 8,
-          paddingBottom: Platform.OS === 'ios' ? 28 : 10,
+          paddingBottom: Platform.select({ ios: 28, web: 16, default: 10 }),
           ...shadow,
         },
         tabBarIcon: ({ focused, color }) => (
