@@ -12,8 +12,15 @@ static PubSubClient mqttClient(espClient);
 // ===== Reconnect timing =====
 static unsigned long lastReconnectAttempt = 0;
 #define RECONNECT_INTERVAL_MS 5000
+// WiFi ก็ต้อง retry ใน loop ด้วย ไม่ใช่แค่ตอน boot: ถ้า AP ยังไม่ขึ้นตอนเปิดเครื่อง
+// (หรือหลุดกลางทาง) node จะรอ WiFi กลับมาแล้วต่อเองโดยไม่ต้องกด reset
+static unsigned long lastWiFiAttempt = 0;
+#define WIFI_RETRY_INTERVAL_MS 15000
+// NTP sync ต้องทำหลัง WiFi ติดเสมอ — timestamp ที่ยังไม่ sync จะเป็นปี 1970
+static bool ntpSynced = false;
 
 static void reconnectMQTT();
+static void syncNTP();
 
 // ===== HiveMQ Cloud Root CA (ISRG Root X1 — Let's Encrypt) =====
 // HiveMQ Cloud ใช้ Let's Encrypt certificate
@@ -98,26 +105,36 @@ void initWiFi() {
 
   if (WiFi.status() == WL_CONNECTED) {
     Serial.printf("\n[WiFi] Connected! IP: %s\n", WiFi.localIP().toString().c_str());
-
-    // ===== NTP time sync (Thailand = UTC+7, ไม่มี DST) =====
-    // จำเป็นสำหรับ timestamp ของ telemetry/alert ให้ตรงเวลาจริง
-    configTime(7 * 3600, 0, "pool.ntp.org", "time.google.com", "time.nist.gov");
-    Serial.print("[NTP] Syncing time");
-    struct tm timeinfo;
-    int ntpTries = 0;
-    while (!getLocalTime(&timeinfo, 500) && ntpTries < 20) {
-      Serial.print(".");
-      ntpTries++;
-    }
-    if (ntpTries < 20) {
-      char buf[32];
-      strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &timeinfo);
-      Serial.printf("\n[NTP] Time synced: %s\n", buf);
-    } else {
-      Serial.println("\n[NTP] Sync failed — timestamps will be marked invalid");
-    }
+    syncNTP();
   } else {
-    Serial.println("\n[WiFi] Failed to connect!");
+    // ไม่ใช่จุดจบ: mqttLoop() จะ retry WiFi ทุก WIFI_RETRY_INTERVAL_MS
+    Serial.printf("\n[WiFi] Failed to connect — will keep retrying every %d s\n",
+                  WIFI_RETRY_INTERVAL_MS / 1000);
+  }
+}
+
+
+// ============================================================
+//  syncNTP() — ตั้งเวลาจริงหลัง WiFi ติด (Thailand = UTC+7, ไม่มี DST)
+//  จำเป็นสำหรับ timestamp ของ telemetry/alert และสำหรับตรวจ TLS certificate
+// ============================================================
+static void syncNTP() {
+  configTime(7 * 3600, 0, "pool.ntp.org", "time.google.com", "time.nist.gov");
+  Serial.print("[NTP] Syncing time");
+  struct tm timeinfo;
+  int ntpTries = 0;
+  while (!getLocalTime(&timeinfo, 500) && ntpTries < 20) {
+    Serial.print(".");
+    ntpTries++;
+  }
+  if (ntpTries < 20) {
+    char buf[32];
+    strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &timeinfo);
+    Serial.printf("\n[NTP] Time synced: %s\n", buf);
+    ntpSynced = true;
+  } else {
+    // ปล่อย ntpSynced เป็น false ไว้ เพื่อให้ลอง sync ใหม่รอบหน้าที่ WiFi ติด
+    Serial.println("\n[NTP] Sync failed — timestamps will be marked invalid");
   }
 }
 
@@ -149,6 +166,11 @@ void initMQTT() {
   mqttClient.setCallback(mqttCallback);
   mqttClient.setBufferSize(1024);  // เพิ่ม buffer สำหรับ JSON payload ขนาดใหญ่
 
+  // ถ้า WiFi ยังไม่ติดตอนบูต ไม่ต้องลองที่นี่ — mqttLoop() จะต่อให้เองเมื่อมี IP
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("[MQTT] Waiting for WiFi before connecting to HiveMQ Cloud");
+    return;
+  }
   Serial.println("[MQTT] Connecting to HiveMQ Cloud...");
   reconnectMQTT();
 }
@@ -182,6 +204,26 @@ static void reconnectMQTT() {
 //  mqttLoop() — เรียกใน loop() เพื่อ maintain connection
 // ============================================================
 void mqttLoop() {
+  // ไม่มี IP ก็ต่อ MQTT ไม่ได้: retry WiFi ก่อน แล้วออกไปเลย ไม่ต้องเสียเวลา
+  // handshake TLS ที่ล้มเหลวแน่นอน (rc=-2 รัว ๆ ทุก 5 วิ)
+  if (WiFi.status() != WL_CONNECTED) {
+    unsigned long now = millis();
+    if (now - lastWiFiAttempt > WIFI_RETRY_INTERVAL_MS) {
+      lastWiFiAttempt = now;
+      Serial.printf("[WiFi] Retrying %s...\n", WIFI_SSID);
+      WiFi.disconnect();
+      WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    }
+    return;
+  }
+
+  // WiFi กลับมาแล้วแต่ยังไม่เคย sync เวลา (บูตมาตอน AP ยังไม่ขึ้น) — sync ตอนนี้
+  // ก่อนจะ publish อะไร ไม่งั้น timestamp เป็นปี 1970
+  if (!ntpSynced) {
+    Serial.printf("[WiFi] Connected! IP: %s\n", WiFi.localIP().toString().c_str());
+    syncNTP();
+  }
+
   if (!mqttClient.connected()) {
     unsigned long now = millis();
     if (now - lastReconnectAttempt > RECONNECT_INTERVAL_MS) {
