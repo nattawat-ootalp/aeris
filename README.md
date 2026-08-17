@@ -15,10 +15,13 @@ Where we run the AWS design on a **free stack**, the trade-offs are recorded in
 
 This build is a **prototype**. The demonstrated path is **portable → BLE → phone → HTTPS POST → FastAPI**.
 
-The station path (AirSentinel node → MQTT → HiveMQ webhook → FastAPI) is **implemented and tested but out of
-scope for the prototype demo**: the only ESP32-S3 on hand runs the portable firmware, so node `BKK-TRT-003`
-publishes nothing and `/nodes/{device_id}/telemetry` correctly answers `"no recent data"`. Nothing about the
-station was removed — re-flashing a board with `firmware/station` is all it takes to bring the path back.
+The station path (AirSentinel node → MQTT → `ingestion/mqtt_bridge.py` → FastAPI) is **implemented and tested
+but out of scope for the prototype demo**: the only ESP32-S3 on hand runs the portable firmware, so node
+`BKK-TRT-003` publishes nothing and `/nodes/{device_id}/telemetry` correctly answers `"no recent data"`.
+Nothing about the station was removed — re-flashing a board with `firmware/station` and starting the bridge
+(`python -m ingestion.mqtt_bridge`) is all it takes to bring the path back. **The bridge is not optional:**
+HiveMQ Cloud Free has no native webhook, so with no bridge process running the station publishes into the
+broker and nothing ever reaches the API.
 
 Two other prototype-only conditions, both deliberate:
 
@@ -31,7 +34,7 @@ Two other prototype-only conditions, both deliberate:
 ```
 Portable (ESP32-S3 + PMS7003 + SCD40) ──BLE──▶ Phone ──HTTPS POST─┐
                                                                    ├─▶ FastAPI (Render Free)
-Station (AirSentinel node) ──MQTT/TLS──▶ HiveMQ Cloud ──webhook────┘        │   (built, not
+Station (AirSentinel node) ──MQTT/TLS──▶ HiveMQ Cloud ──mqtt_bridge─┘       │   (built, not
                                                                             │    demoed — see
                                                                             │    Prototype scope)
                                                                             ▼
@@ -55,7 +58,7 @@ Station (AirSentinel node) ──MQTT/TLS──▶ HiveMQ Cloud ──webhook─
 | Path | What |
 |------|------|
 | `firmware/portable/` | ESP32-S3 firmware. Reuses AirSentinel sensor-read; **I2C bus-fix copied verbatim** (`DO NOT MODIFY`). |
-| `ingestion/` | One validation layer for both transports (station webhook + portable POST) → InfluxDB + Supabase. |
+| `ingestion/` | One validation layer for both transports (station webhook + portable POST) → InfluxDB + Supabase. `mqtt_bridge.py` subscribes the station's HiveMQ topics and HMAC-signs each payload into `/webhook/telemetry`. |
 | `intelligence/` | Pure-Python, testable: quality · exposure · baseline · pattern · decision · persistence/hysteresis/cooldown · explainability (TDD §5). |
 | `core-api/` | FastAPI: telemetry/history/alerts/ranking/threshold, decision/exposure/symptom, Destination Assessment (§6), `WS /ws/realtime`. |
 | `mobile/` | React Native (Expo). MVP screens + Watch (Normal/Caution/High/No Data). Also the **web** build — same source, exported through `react-native-web`. |
@@ -73,6 +76,10 @@ python -m venv .venv && . .venv/Scripts/activate    # Windows: .venv\Scripts\act
 pip install -r requirements-dev.txt
 pytest                     # intelligence + ingestion unit tests
 uvicorn core_api.app.main:app --reload   # http://localhost:8000/docs
+
+# Station telemetry: carry HiveMQ → API (always-on host; Render Free cannot hold MQTT)
+python -m ingestion.mqtt_bridge                       # → https://aeris-core-api.onrender.com
+python -m ingestion.mqtt_bridge --api-base http://127.0.0.1:8000 -v
 ```
 
 > Docker is **not** required locally — images build in CI. Local Python is 3.14; the deployed runtime is pinned to 3.12.
