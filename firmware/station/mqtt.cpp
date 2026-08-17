@@ -12,6 +12,11 @@ static PubSubClient mqttClient(espClient);
 // ===== Reconnect timing =====
 static unsigned long lastReconnectAttempt = 0;
 #define RECONNECT_INTERVAL_MS 5000
+#define RECONNECT_MAX_INTERVAL_MS 60000
+// ระยะรอปัจจุบันของ MQTT reconnect — โตเป็นเท่าตัวทุกครั้งที่ล้ม, กลับเป็น 5 วิเมื่อต่อได้
+static unsigned long reconnectBackoffMs = RECONNECT_INTERVAL_MS;
+// ใช้ตรวจ "เพิ่งหลุด" เพื่อ log สาเหตุครั้งเดียว ไม่ใช่ทุกรอบ loop
+static bool wasConnected = false;
 // WiFi ก็ต้อง retry ใน loop ด้วย ไม่ใช่แค่ตอน boot: ถ้า AP ยังไม่ขึ้นตอนเปิดเครื่อง
 // (หรือหลุดกลางทาง) node จะรอ WiFi กลับมาแล้วต่อเองโดยไม่ต้องกด reset
 static unsigned long lastWiFiAttempt = 0;
@@ -165,6 +170,9 @@ void initMQTT() {
   mqttClient.setServer(MQTT_HOST, MQTT_PORT);
   mqttClient.setCallback(mqttCallback);
   mqttClient.setBufferSize(1024);  // เพิ่ม buffer สำหรับ JSON payload ขนาดใหญ่
+  // keepalive เริ่มต้น 15 วิ สั้นกว่าคาบ telemetry (30 วิ) — ขยับเป็น 60 วิ ลดโอกาสที่
+  // broker ตัดสายเพราะรอ PINGREQ ไม่ทันตอน readSensors/I2C recovery กินเวลา
+  mqttClient.setKeepAlive(60);
 
   // ถ้า WiFi ยังไม่ติดตอนบูต ไม่ต้องลองที่นี่ — mqttLoop() จะต่อให้เองเมื่อมี IP
   if (WiFi.status() != WL_CONNECTED) {
@@ -184,10 +192,14 @@ static void reconnectMQTT() {
 
   Serial.printf("[MQTT] Attempting connection to %s:%d...\n", MQTT_HOST, MQTT_PORT);
 
-  String clientId = "ESP32-" + String(NODE_ID);
+  // client id ต้องไม่ซ้ำกับ session อื่นบน broker: MQTT บังคับว่าถ้ามีคนต่อด้วย id เดียวกัน
+  // ตัวเก่าจะถูกเตะออก — id คงที่ทำให้ session ค้างของรอบก่อน (หรืออีกตัวที่ใช้ id เดียวกัน)
+  // เตะเรากลับไปกลับมา: ต่อได้ publish ได้ครั้งเดียว แล้วหลุดทันที (state=-3)
+  String clientId = "ESP32-" + String(NODE_ID) + "-" + String(esp_random(), HEX);
 
   if (mqttClient.connect(clientId.c_str(), MQTT_USER, MQTT_PASS)) {
     Serial.println("[MQTT] Connected!");
+    reconnectBackoffMs = RECONNECT_INTERVAL_MS;  // ต่อได้แล้ว — เริ่มนับ backoff ใหม่
 
     // Subscribe to command and OTA topics
     mqttClient.subscribe(TOPIC_CMD);
@@ -195,7 +207,11 @@ static void reconnectMQTT() {
     Serial.printf("[MQTT] Subscribed to: %s\n", TOPIC_CMD);
     Serial.printf("[MQTT] Subscribed to: %s\n", TOPIC_OTA_UPDATE);
   } else {
-    Serial.printf("[MQTT] Failed, rc=%d\n", mqttClient.state());
+    Serial.printf("[MQTT] Failed, rc=%d — next try in %lu s (RSSI %d dBm)\n",
+                  mqttClient.state(), reconnectBackoffMs / 1000, WiFi.RSSI());
+    // ยิงถี่ ๆ ทุก 5 วิไม่ช่วย: broker ปฏิเสธ TCP/TLS ซ้ำ ๆ อยู่แล้ว และการรัว connect
+    // ยังทำให้ถูก throttle ยาวขึ้น — ถอยเป็นเท่าตัวจนสุดที่ RECONNECT_MAX_INTERVAL_MS
+    reconnectBackoffMs = min(reconnectBackoffMs * 2, (unsigned long)RECONNECT_MAX_INTERVAL_MS);
   }
 }
 
@@ -225,11 +241,19 @@ void mqttLoop() {
   }
 
   if (!mqttClient.connected()) {
+    // รายงานตอนหลุดครั้งแรก พร้อม state + RSSI — ไม่งั้นเห็นแค่ rc=-2 ซ้ำ ๆ โดยไม่รู้ว่าหลุดตอนไหน
+    if (wasConnected) {
+      wasConnected = false;
+      Serial.printf("[MQTT] Connection lost (state=%d, RSSI %d dBm)\n",
+                    mqttClient.state(), WiFi.RSSI());
+    }
     unsigned long now = millis();
-    if (now - lastReconnectAttempt > RECONNECT_INTERVAL_MS) {
+    if (now - lastReconnectAttempt > reconnectBackoffMs) {
       lastReconnectAttempt = now;
       reconnectMQTT();
     }
+  } else {
+    wasConnected = true;
   }
   mqttClient.loop();
 }
