@@ -5,11 +5,14 @@
 - Alerts:  `POST /webhook/alert`
 
 Both telemetry paths: parse → adapt to a Reading → SHARED validate (§5.1) → store. An invalid
-PM reading is still recorded (flagged) but never yields a PM value or a PM-based caution.
+PM reading is still recorded (flagged) but never yields a PM value or a PM-based caution. A
+reading whose device clock has not synced, or one the time-series refuses, is answered with
+``accepted: false`` and a reason — never a bare 500.
 """
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Request
 
@@ -21,11 +24,49 @@ from .validate import validate
 log = logging.getLogger("aeris.ingestion")
 router = APIRouter(tags=["ingestion"])
 
+# A device whose clock has not synced sends an epoch timestamp — the station firmware emits
+# 1970-01-01 when NTP has not answered yet. Such a point is outside the bucket's retention,
+# so InfluxDB rejects the write with HTTP 400 and the whole request used to fail as a 500 with
+# no hint of why. Reject it here with a reason instead. The timestamp is NEVER replaced with
+# server time: that would invent a freshness the reading does not have.
+_CLOCK_FLOOR = datetime(2020, 1, 1, tzinfo=UTC)
+_CLOCK_SKEW_AHEAD = timedelta(hours=1)
+
+
+def _clock_is_plausible(ts: datetime, now: datetime | None = None) -> bool:
+    now = now or datetime.now(UTC)
+    return _CLOCK_FLOOR <= ts <= now + _CLOCK_SKEW_AHEAD
+
 
 def _ingest_reading(reading, source: str) -> dict:
+    if not _clock_is_plausible(reading.timestamp):
+        log.warning(
+            "%s reading from %s rejected: device clock unsynced (ts=%s)",
+            source,
+            reading.device_id,
+            reading.timestamp.isoformat(),
+        )
+        return {
+            "accepted": False,
+            "device_id": reading.device_id,
+            "source": source,
+            "error": "CLOCK_UNSYNCED",
+            "reasons": ["CLOCK_UNSYNCED"],
+            "timestamp": reading.timestamp.isoformat(),
+        }
     quality = validate(reading)
     # store time-series (pm25 only if valid) + keep the device registry fresh
-    writers.write_reading(reading, quality, source)
+    try:
+        writers.write_reading(reading, quality, source)
+    except Exception as e:  # noqa: BLE001 — surface the cause; a 500 tells the sender nothing
+        log.error("store failed for %s (%s): %s", reading.device_id, source, e)
+        return {
+            "accepted": False,
+            "device_id": reading.device_id,
+            "source": source,
+            "error": "STORE_FAILED",
+            "reasons": ["STORE_FAILED"],
+        }
     writers.upsert_device(reading, source)
     return {
         "accepted": True,
