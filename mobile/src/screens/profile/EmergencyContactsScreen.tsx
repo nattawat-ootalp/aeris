@@ -61,7 +61,7 @@ export function EmergencyContactsScreen() {
     <Screen title="Emergency Contacts" subtitle="ผู้ที่คุณต้องการติดต่อเมื่อกด SOS">
       <InfoCard>
         <Text style={styles.boundary}>
-          Aeris แสดงรายชื่อเหล่านี้ให้คุณติดต่อเอง ระบบไม่ได้ส่งข้อความหรือโทรหาใครโดยอัตโนมัติ
+          NextAir แสดงรายชื่อเหล่านี้ให้คุณติดต่อเอง ระบบไม่ได้ส่งข้อความหรือโทรหาใครโดยอัตโนมัติ
           และไม่ได้ประเมินว่าสถานการณ์เป็นเหตุฉุกเฉินทางการแพทย์หรือไม่
         </Text>
       </InfoCard>

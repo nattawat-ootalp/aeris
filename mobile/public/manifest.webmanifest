@@ -1,6 +1,6 @@
 {
-  "name": "Aeris — Personal Environmental Exposure",
-  "short_name": "Aeris",
+  "name": "NextAir — Personal Environmental Exposure",
+  "short_name": "NextAir",
   "description": "Individual exposure tracking and explainable, non-diagnostic decision support. Not a medical device.",
   "start_url": "/",
   "scope": "/",
@@ -10,8 +10,8 @@
   "theme_color": "#0D9488",
   "lang": "th",
   "icons": [
-    { "src": "/aeris-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "/aeris-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "/aeris-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "/nextair-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/nextair-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/nextair-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }

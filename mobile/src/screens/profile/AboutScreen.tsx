@@ -12,20 +12,20 @@ export function AboutScreen() {
   const { data, error } = useRemote(useCallback(() => getHealth(), []));
 
   return (
-    <Screen title="About Aeris" subtitle="เกี่ยวกับแอป">
+    <Screen title="About NextAir" subtitle="เกี่ยวกับแอป">
       <InfoCard title="App">
         <MetaRow label="Version" value={Application.nativeApplicationVersion ?? 'No Data'} />
         <MetaRow label="Build" value={Application.nativeBuildVersion ?? 'No Data'} />
         <MetaRow label="API" value={BASE_URL} />
         <MetaRow label="Service" value={error ? 'Unreachable' : (data?.status ?? 'Checking…')} />
       </InfoCard>
-      <InfoCard title="What Aeris does">
+      <InfoCard title="What NextAir does">
         <Text style={styles.body}>
-          Aeris measures the environment around you, records what you choose to report, and shows
+          NextAir measures the environment around you, records what you choose to report, and shows
           you both together over time.
         </Text>
       </InfoCard>
-      <InfoCard title="What Aeris does not do">
+      <InfoCard title="What NextAir does not do">
         <Text style={styles.body}>
           It does not diagnose any condition, does not tell you whether a place is medically
           suitable for you, and does not replace advice from a healthcare professional.

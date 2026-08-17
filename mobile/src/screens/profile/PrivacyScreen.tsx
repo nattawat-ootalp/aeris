@@ -41,7 +41,7 @@ export function PrivacyScreen() {
     setMsg(null);
     try {
       const payload = await exportMyData();
-      await Share.share({ message: JSON.stringify(payload, null, 2), title: 'Aeris data export' });
+      await Share.share({ message: JSON.stringify(payload, null, 2), title: 'NextAir data export' });
     } catch (e) {
       setMsg(`Export failed: ${e instanceof Error ? e.message : String(e)}`);
     } finally {

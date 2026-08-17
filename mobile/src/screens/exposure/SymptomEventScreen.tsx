@@ -76,7 +76,7 @@ export function SymptomEventScreen({ navigation }: Props) {
           <Chip label="ใช้ยาสูดพ่น" selected={inhalerUsed} onPress={() => setInhalerUsed(!inhalerUsed)} />
         </View>
         <Text style={styles.inhalerNote}>
-          บันทึกไว้เป็นข้อมูลประกอบเท่านั้น Aeris ไม่ได้แนะนำให้ใช้หรือไม่ใช้ยา
+          บันทึกไว้เป็นข้อมูลประกอบเท่านั้น NextAir ไม่ได้แนะนำให้ใช้หรือไม่ใช้ยา
         </Text>
       </InfoCard>
       <InfoCard title="Severity">
@@ -90,7 +90,7 @@ export function SymptomEventScreen({ navigation }: Props) {
       <PrimaryButton label={saving ? 'Saving…' : 'Save event'} onPress={save} disabled={saving} />
       {msg ? <Text style={styles.msg}>{msg}</Text> : null}
       <Text style={styles.disclaimer}>
-        Aeris records what you feel — it does not diagnose, confirm a cause, or replace medical advice.
+        NextAir records what you feel — it does not diagnose, confirm a cause, or replace medical advice.
       </Text>
     </Screen>
   );

@@ -46,7 +46,7 @@ export function PersonalPatternScreen() {
             </Text>
           ) : null}
           <Text style={styles.note}>
-            This is an observational association, not a proven cause. Aeris does not diagnose or
+            This is an observational association, not a proven cause. NextAir does not diagnose or
             explain why symptoms happen.
           </Text>
         </>

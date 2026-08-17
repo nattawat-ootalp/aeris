@@ -50,7 +50,7 @@ const DOCUMENT_TITLES: Record<string, string> = {
   PairSensor: 'จับคู่อุปกรณ์',
   ActionPlan: 'แผนรับมือ',
   EmergencyContacts: 'ผู้ติดต่อฉุกเฉิน',
-  About: 'เกี่ยวกับ Aeris',
+  About: 'เกี่ยวกับ NextAir',
   Sos: 'SOS',
   EmergencyBoundary: 'ขอความช่วยเหลือฉุกเฉิน',
 };
@@ -59,7 +59,7 @@ const DOCUMENT_TITLES: Record<string, string> = {
 export const documentTitle: DocumentTitleOptions = {
   formatter: (_options: object | undefined, route: Route<string> | undefined) => {
     const label = route?.name ? DOCUMENT_TITLES[route.name] : undefined;
-    return label ? `${label} · Aeris` : 'Aeris';
+    return label ? `${label} · NextAir` : 'NextAir';
   },
 };
 

@@ -19,7 +19,7 @@ export function OnboardingScreen({ navigation }: Props) {
 
   return (
     <View style={[styles.root, measure]}>
-      <Text style={styles.logo}>Aeris</Text>
+      <Text style={styles.logo}>NextAir</Text>
       <View style={styles.center}>
         <View style={styles.deviceArt} />
         <Text style={styles.headline}>เข้าใจสภาพแวดล้อมรอบตัวคุณ{'\n'}แบบเฉพาะบุคคล</Text>

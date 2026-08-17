@@ -14,7 +14,7 @@ export function PairSensorScreen() {
   useEffect(() => stopPairing, [stopPairing]);
 
   return (
-    <Screen title="Connect your device" subtitle="Pair your Aeris Portable over Bluetooth">
+    <Screen title="Connect your device" subtitle="Pair your NextAir Portable over Bluetooth">
       <View style={styles.center}>
         <Ionicons name={state === 'connected' ? 'bluetooth' : 'bluetooth-outline'} size={40} color={state === 'connected' ? colors.primary : colors.textMuted} />
         <Text style={styles.stateText}>{stateLabel(state)}</Text>
@@ -49,7 +49,7 @@ export function PairSensorScreen() {
       </View>
       <Text style={styles.note}>
         {Platform.OS === 'web'
-          ? 'In a browser, pairing opens Chrome’s own device chooser — pick your Aeris device there.'
+          ? 'In a browser, pairing opens Chrome’s own device chooser — pick your NextAir device there.'
           : 'Bluetooth pairing requires a development build (not Expo Go).'}
       </Text>
     </Screen>
@@ -63,9 +63,9 @@ function scanFailureLabel(reason: string): string {
     case 'bluetooth-off':
       return 'Bluetooth is turned off. Turn it on and try again.';
     case 'unsupported':
-      return 'This browser has no Bluetooth support. Chrome or Edge can pair from a computer or an Android phone; on iPhone and iPad, use the Aeris app.';
+      return 'This browser has no Bluetooth support. Chrome or Edge can pair from a computer or an Android phone; on iPhone and iPad, use the NextAir app.';
     case 'cancelled':
-      return 'Pairing was cancelled. Press Scan and pick your Aeris device from the list.';
+      return 'Pairing was cancelled. Press Scan and pick your NextAir device from the list.';
     default:
       return 'Could not start scanning. Try again.';
   }
@@ -73,7 +73,7 @@ function scanFailureLabel(reason: string): string {
 
 function stateLabel(s: string): string {
   switch (s) {
-    case 'scanning': return 'Searching for your Aeris device…';
+    case 'scanning': return 'Searching for your NextAir device…';
     case 'connecting': return 'Connecting…';
     case 'connected': return 'Connected';
     default: return 'Not connected';

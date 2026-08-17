@@ -19,7 +19,7 @@ export function EmergencyBoundaryScreen({ navigation }: Props) {
     <View style={[styles.root, measure]}>
       <Text style={styles.title}>Your event has been recorded</Text>
       <Text style={styles.body}>
-        Aeris tracks environmental exposure and what you report feeling. It does not diagnose
+        NextAir tracks environmental exposure and what you report feeling. It does not diagnose
         conditions, does not know if this is a medical emergency, and cannot tell you what to do
         next.
       </Text>

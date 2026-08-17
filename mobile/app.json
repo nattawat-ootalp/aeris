@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Aeris",
+    "name": "NextAir",
     "slug": "aeris",
     "version": "1.4.2",
     "orientation": "portrait",
@@ -11,9 +11,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.aeris.app",
       "infoPlist": {
-        "NSBluetoothAlwaysUsageDescription": "Aeris connects to your Aeris Portable device over Bluetooth to read live air-quality readings.",
-        "NSBluetoothPeripheralUsageDescription": "Aeris connects to your Aeris Portable device over Bluetooth to read live air-quality readings.",
-        "NSLocationWhenInUseUsageDescription": "Aeris uses your location to assess environmental conditions near you and at destinations you check."
+        "NSBluetoothAlwaysUsageDescription": "NextAir connects to your NextAir Portable device over Bluetooth to read live air-quality readings.",
+        "NSBluetoothPeripheralUsageDescription": "NextAir connects to your NextAir Portable device over Bluetooth to read live air-quality readings.",
+        "NSLocationWhenInUseUsageDescription": "NextAir uses your location to assess environmental conditions near you and at destinations you check."
       }
     },
     "android": {
@@ -39,7 +39,7 @@
         {
           "isBackgroundEnabled": false,
           "modes": ["central"],
-          "bluetoothAlwaysPermission": "Allow Aeris to connect to your Aeris Portable device over Bluetooth."
+          "bluetoothAlwaysPermission": "Allow NextAir to connect to your NextAir Portable device over Bluetooth."
         }
       ]
     ],

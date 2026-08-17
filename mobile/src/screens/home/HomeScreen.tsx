@@ -76,7 +76,7 @@ export function HomeScreen({ navigation }: Props) {
   return (
     <Screen
       title="สวัสดี"
-      subtitle="Aeris"
+      subtitle="NextAir"
       right={
         <Pressable onPress={() => navigation.navigate('Notifications')} style={styles.bellBtn}>
           <Ionicons name="notifications-outline" size={20} color={colors.text} />

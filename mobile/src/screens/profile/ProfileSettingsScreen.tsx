@@ -61,7 +61,7 @@ export function ProfileSettingsScreen({ navigation }: Props) {
         { label: 'Data export', hint: 'Export or delete your synced data', onPress: () => navigation.navigate('Privacy') },
       ],
     },
-    { title: 'About', items: [{ label: 'About Aeris', onPress: () => navigation.navigate('About') }] },
+    { title: 'About', items: [{ label: 'About NextAir', onPress: () => navigation.navigate('About') }] },
   ];
 
   return (
