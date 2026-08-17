@@ -59,7 +59,13 @@ export function PairSensorScreen() {
 function scanFailureLabel(reason: string): string {
   switch (reason) {
     case 'permission-denied':
-      return 'Bluetooth permission was denied. Enable it in your phone\'s app settings and try again.';
+      // On the web this arrives as a SecurityError, which a browser raises for a blocked
+      // Permissions-Policy, a missing user gesture, or — on Android — BLE scanning without the
+      // Location permission it is gated behind. Sending a browser user to their app settings
+      // points them somewhere that cannot fix any of those.
+      return Platform.OS === 'web'
+        ? 'The browser blocked Bluetooth. On Android, turn Location on and give Chrome the Location permission, then reload this page and try again.'
+        : 'Bluetooth permission was denied. Enable it in your phone\'s app settings and try again.';
     case 'bluetooth-off':
       return 'Bluetooth is turned off. Turn it on and try again.';
     case 'unsupported':
