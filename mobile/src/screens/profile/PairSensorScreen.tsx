@@ -1,7 +1,7 @@
 /** Screen 02 — Pair Sensor. Connect the Aeris Portable Device over Bluetooth. */
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { PrimaryButton, SecondaryButton } from '../../components/ui';
 import { Screen } from '../../components/Screen';
 import { co2Label, eco2Label, tvocLabel } from '../../lib/format';
@@ -47,7 +47,11 @@ export function PairSensorScreen() {
         <Pressable onPress={startPairing}><Text style={styles.helpLink}>Try again</Text></Pressable>
         <Text style={styles.helpLink}>Help</Text>
       </View>
-      <Text style={styles.note}>Bluetooth pairing requires a development build (not Expo Go).</Text>
+      <Text style={styles.note}>
+        {Platform.OS === 'web'
+          ? 'In a browser, pairing opens Chrome’s own device chooser — pick your Aeris device there.'
+          : 'Bluetooth pairing requires a development build (not Expo Go).'}
+      </Text>
     </Screen>
   );
 }
@@ -58,6 +62,10 @@ function scanFailureLabel(reason: string): string {
       return 'Bluetooth permission was denied. Enable it in your phone\'s app settings and try again.';
     case 'bluetooth-off':
       return 'Bluetooth is turned off. Turn it on and try again.';
+    case 'unsupported':
+      return 'This browser has no Bluetooth support. Chrome or Edge can pair from a computer or an Android phone; on iPhone and iPad, use the Aeris app.';
+    case 'cancelled':
+      return 'Pairing was cancelled. Press Scan and pick your Aeris device from the list.';
     default:
       return 'Could not start scanning. Try again.';
   }

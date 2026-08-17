@@ -1,7 +1,22 @@
 /**
- * Web-preview stand-in for src/lib/ble.ts. `react-native-ble-plx` links native code and has
- * no web implementation, so this file (picked automatically by Metro for the web bundle)
- * keeps the same exported shape but never claims a device is connected.
+ * Web implementation of src/lib/ble.ts, on the browser's Web Bluetooth API.
+ *
+ * `react-native-ble-plx` links native code and has no web build, so Metro picks this file for
+ * the web bundle. It keeps the same exported shape and speaks the same GATT contract
+ * (docs/ble-contract.md) — the same portable, the same service, the same three
+ * characteristics — so state/portable.tsx does not know which one it is talking to.
+ *
+ * Three differences are forced by the platform and cannot be papered over:
+ *   * There is no free-running scan. `navigator.bluetooth.requestDevice()` opens the browser's
+ *     own chooser and resolves with the single device the user picked, so `scanForPortables`
+ *     reports one device and then stops.
+ *   * The chooser needs transient user activation, which is why `requestDevice` is reached
+ *     before any `await` below — awaiting first can spend the activation and make it throw.
+ *   * MTU is negotiated by the browser; there is no requestMTU(). The firmware keeps each
+ *     JSON frame under 180 bytes, which every current implementation carries.
+ *
+ * Not available in every browser: Chrome and Edge implement Web Bluetooth on desktop and
+ * Android, Safari does not implement it at all, so iPhone and iPad report 'unsupported'.
  */
 export const SERVICE_UUID = 'c1b0ae00-9e57-4a3d-9f2a-0e1a2b3c4d00';
 export const CHAR_TELEMETRY_UUID = 'c1b0ae01-9e57-4a3d-9f2a-0e1a2b3c4d01';
@@ -40,34 +55,178 @@ export interface PortableSos {
   ts: number;
 }
 
-export type ScanFailureReason = 'permission-denied' | 'bluetooth-off' | 'scan-error';
+export type ScanFailureReason =
+  | 'permission-denied'
+  | 'bluetooth-off'
+  | 'scan-error'
+  | 'unsupported'
+  | 'cancelled';
 
-export async function requestBlePermissions(): Promise<boolean> {
-  return false;
+// ── Minimal Web Bluetooth types ──
+// Declared here rather than pulled from @types/web-bluetooth: the API is used in exactly this
+// file, and a devDependency that only types four calls is not worth carrying.
+interface WebBleCharacteristic extends EventTarget {
+  value?: DataView;
+  readValue(): Promise<DataView>;
+  startNotifications(): Promise<WebBleCharacteristic>;
+}
+interface WebBleService {
+  getCharacteristic(uuid: string): Promise<WebBleCharacteristic>;
+}
+interface WebBleServer {
+  connected: boolean;
+  disconnect(): void;
+  getPrimaryService(uuid: string): Promise<WebBleService>;
+}
+export interface WebBleDevice extends EventTarget {
+  id: string;
+  name?: string;
+  gatt?: WebBleServer & { connect(): Promise<WebBleServer> };
+}
+interface WebBluetooth {
+  requestDevice(options: { filters: { services: string[] }[] }): Promise<WebBleDevice>;
+  getAvailability?: () => Promise<boolean>;
 }
 
+function bluetooth(): WebBluetooth | null {
+  const nav = navigator as unknown as { bluetooth?: WebBluetooth };
+  return nav.bluetooth ?? null;
+}
+
+/** No separate permission step on the web: the chooser IS the permission prompt, and the
+ *  browser grants access to the one device the user picks in it. */
+export async function requestBlePermissions(): Promise<boolean> {
+  return bluetooth() != null;
+}
+
+/** `getAvailability()` reports whether the machine has a usable radio at all. It is optional
+ *  in the spec, so an implementation without it is assumed available and left to fail later
+ *  with a real error rather than a guessed one. */
 export async function isBluetoothPoweredOn(): Promise<boolean> {
-  return false;
+  const ble = bluetooth();
+  if (!ble) return false;
+  if (!ble.getAvailability) return true;
+  try {
+    return await ble.getAvailability();
+  } catch {
+    return true;
+  }
 }
 
 export async function scanForPortables(
-  _onFound: (device: unknown) => void,
+  onFound: (device: WebBleDevice) => void,
   onFailure: (reason: ScanFailureReason) => void,
 ): Promise<() => void> {
-  console.warn('[ble.web] Bluetooth is not available in the web preview.');
-  onFailure('scan-error');
-  return () => {};
+  const ble = bluetooth();
+  if (!ble) {
+    onFailure('unsupported');
+    return () => {};
+  }
+  // Called before this function awaits anything — see the user-activation note at the top.
+  let pending: Promise<WebBleDevice>;
+  try {
+    pending = ble.requestDevice({ filters: [{ services: [SERVICE_UUID] }] });
+  } catch {
+    onFailure('scan-error');
+    return () => {};
+  }
+
+  let abandoned = false;
+  pending
+    .then((device) => {
+      if (!abandoned) onFound(device);
+    })
+    .catch(async (e: unknown) => {
+      if (abandoned) return;
+      const name = e instanceof Error ? e.name : '';
+      // NotFoundError covers both "user closed the chooser" and "nothing matched the filter".
+      // The radio check separates a dismissed dialog from a machine that cannot scan at all.
+      if (name === 'NotFoundError') {
+        onFailure((await isBluetoothPoweredOn()) ? 'cancelled' : 'bluetooth-off');
+        return;
+      }
+      if (name === 'SecurityError' || name === 'NotAllowedError') {
+        onFailure('permission-denied');
+        return;
+      }
+      onFailure('scan-error');
+    });
+
+  // The chooser cannot be closed from script; abandoning stops its result being delivered.
+  return () => {
+    abandoned = true;
+  };
+}
+
+function decode(value: DataView | undefined): Record<string, unknown> | null {
+  if (!value) return null;
+  try {
+    return JSON.parse(new TextDecoder().decode(value));
+  } catch {
+    return null; // malformed frame — treated as no data, never guessed
+  }
 }
 
 export async function connectAndSubscribe(
-  _device: unknown,
-  _onTelemetry: (t: PortableTelemetry) => void,
-  _onDisconnected: () => void,
-  _onStatus?: (s: PortableStatus) => void,
+  device: WebBleDevice,
+  onTelemetry: (t: PortableTelemetry) => void,
+  onDisconnected: () => void,
+  onStatus?: (s: PortableStatus) => void,
+  onSos?: (s: PortableSos) => void,
 ): Promise<{ remove: () => void }> {
-  throw new Error('Bluetooth is not available in the web preview — use a dev-client build.');
+  if (!device.gatt) throw new Error('Device exposes no GATT server');
+  const server = await device.gatt.connect();
+  const service = await server.getPrimaryService(SERVICE_UUID);
+
+  const onGattDisconnected = () => onDisconnected();
+  device.addEventListener('gattserverdisconnected', onGattDisconnected);
+
+  const listeners: { char: WebBleCharacteristic; fn: EventListener }[] = [];
+
+  async function subscribe(uuid: string, handle: (parsed: Record<string, unknown>) => void) {
+    const char = await service.getCharacteristic(uuid);
+    const fn: EventListener = (event) => {
+      const parsed = decode((event.target as WebBleCharacteristic).value);
+      if (parsed) handle(parsed);
+    };
+    char.addEventListener('characteristicvaluechanged', fn);
+    listeners.push({ char, fn });
+    await char.startNotifications();
+    return char;
+  }
+
+  if (onStatus) {
+    // Read once so the firmware version is known immediately, then follow notifications.
+    // Optional characteristic — its absence is not an error.
+    try {
+      const char = await subscribe(CHAR_STATUS_UUID, (p) => onStatus(p as unknown as PortableStatus));
+      const first = decode(await char.readValue());
+      if (first) onStatus(first as unknown as PortableStatus);
+    } catch {
+      /* not implemented by this firmware build */
+    }
+  }
+
+  if (onSos) {
+    try {
+      await subscribe(CHAR_SOS_UUID, (p) => {
+        if (p.event === 'sos') onSos(p as unknown as PortableSos);
+      });
+    } catch {
+      /* not implemented by this firmware build */
+    }
+  }
+
+  await subscribe(CHAR_TELEMETRY_UUID, (p) => onTelemetry(p as unknown as PortableTelemetry));
+
+  return {
+    remove: () => {
+      device.removeEventListener('gattserverdisconnected', onGattDisconnected);
+      for (const { char, fn } of listeners) char.removeEventListener('characteristicvaluechanged', fn);
+    },
+  };
 }
 
-export function disconnect(_device: unknown) {
-  // no-op on web
+export function disconnect(device: WebBleDevice) {
+  if (device.gatt?.connected) device.gatt.disconnect();
 }

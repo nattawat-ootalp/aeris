@@ -81,7 +81,15 @@ export async function isBluetoothPoweredOn(): Promise<boolean> {
   return s === BleState.PoweredOn;
 }
 
-export type ScanFailureReason = 'permission-denied' | 'bluetooth-off' | 'scan-error';
+/** 'unsupported' and 'cancelled' are only ever produced by the web implementation
+ *  (src/lib/ble.web.ts) — a browser without Web Bluetooth, and a dismissed device chooser.
+ *  The union is shared so both builds hand the UI the same vocabulary. */
+export type ScanFailureReason =
+  | 'permission-denied'
+  | 'bluetooth-off'
+  | 'scan-error'
+  | 'unsupported'
+  | 'cancelled';
 
 export async function scanForPortables(
   onFound: (device: Device) => void,
