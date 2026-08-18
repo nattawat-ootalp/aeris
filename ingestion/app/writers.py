@@ -58,8 +58,7 @@ def _fields(reading: Reading, quality: QualityResult) -> dict:
     return f
 
 
-def write_reading(reading: Reading, quality: QualityResult, source: str) -> None:
-    """source = 'portable' | 'station'. Reuses the AirSentinel `air_quality` measurement."""
+def _point(reading: Reading, quality: QualityResult, source: str) -> Point:
     point = (
         Point("air_quality")
         .tag("device_id", reading.device_id)
@@ -69,7 +68,27 @@ def write_reading(reading: Reading, quality: QualityResult, source: str) -> None
     )
     for k, v in _fields(reading, quality).items():
         point = point.field(k, v)
-    _write_api().write(bucket=settings.INFLUXDB_BUCKET, record=point)
+    return point
+
+
+def write_reading(reading: Reading, quality: QualityResult, source: str) -> None:
+    """source = 'portable' | 'station' | 'demo'. Reuses the AirSentinel `air_quality`
+    measurement."""
+    _write_api().write(bucket=settings.INFLUXDB_BUCKET, record=_point(reading, quality, source))
+
+
+def write_readings(pairs: list[tuple[Reading, QualityResult]], source: str) -> None:
+    """Write many readings in one request.
+
+    Same points as calling write_reading in a loop — this only avoids paying an HTTP round trip
+    per reading, which turns a fortnight of backfill from thousands of sequential writes into
+    one. Used by the demo seeder; the ingest endpoints stay one-at-a-time so a failure can still
+    be attributed to the exact reading that caused it.
+    """
+    if not pairs:
+        return
+    records = [_point(reading, quality, source) for reading, quality in pairs]
+    _write_api().write(bucket=settings.INFLUXDB_BUCKET, record=records)
 
 
 def upsert_device(reading: Reading, source: str) -> None:

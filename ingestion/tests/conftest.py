@@ -16,8 +16,9 @@ def client():
 
 @pytest.fixture(autouse=True)
 def offline(monkeypatch):
-    calls: dict[str, list] = {"write_reading": [], "upsert_device": [], "sb_post": []}
+    calls: dict[str, list] = {"write_reading": [], "write_readings": [], "upsert_device": [], "sb_post": []}
     monkeypatch.setattr(writers, "write_reading", lambda *a, **k: calls["write_reading"].append((a, k)))
+    monkeypatch.setattr(writers, "write_readings", lambda *a, **k: calls["write_readings"].append((a, k)))
     monkeypatch.setattr(writers, "upsert_device", lambda *a, **k: calls["upsert_device"].append((a, k)))
     monkeypatch.setattr(supa, "sb_post", lambda *a, **k: calls["sb_post"].append((a, k)) or [{}])
     return calls

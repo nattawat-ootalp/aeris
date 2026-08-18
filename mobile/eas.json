@@ -19,6 +19,15 @@
         "EXPO_PUBLIC_API_BASE_URL": "https://aeris-core-api.onrender.com"
       }
     },
+    "demo": {
+      "distribution": "internal",
+      "android": { "buildType": "apk" },
+      "ios": { "simulator": false },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://aeris-core-api.onrender.com",
+        "EXPO_PUBLIC_DEFAULT_DEVICE_ID": "DEMO-ROOM-001"
+      }
+    },
     "production": {
       "autoIncrement": true,
       "env": {
