@@ -114,3 +114,87 @@ def test_store_failure_is_reported_instead_of_500(client, monkeypatch):
         "accepted": False, "device_id": "P001", "source": "portable",
         "error": "STORE_FAILED", "reasons": ["STORE_FAILED"],
     }
+
+
+# ── Portable backlog replay (POST /ingest/portable/batch) ──
+
+
+def _sample(minutes_ago: float, pm25: float = 12.0) -> dict:
+    ts = datetime.now(UTC) - timedelta(minutes=minutes_ago)
+    return {
+        "device_id": "P001", "timestamp": ts.isoformat(),
+        "pm25": pm25, "temperature": 30.0, "humidity": 60.0, "sensor_status": "OK",
+    }
+
+
+def test_batch_stores_every_reading(client, offline):
+    r = client.post("/ingest/portable/batch", json={
+        "readings": [_sample(30), _sample(20), _sample(10)],
+    })
+    assert r.status_code == 200
+    body = r.json()
+    assert body["received"] == 3 and body["stored"] == 3 and body["failed"] == []
+    assert len(offline["write_reading"]) == 3
+
+
+def test_batch_keeps_each_readings_own_capture_time(client, offline):
+    # The point of the buffer: a drained backlog must land as the history it was, not as a
+    # burst at upload time. Server time must never replace the timestamp a sample carries.
+    sent = [_sample(30), _sample(20), _sample(10)]
+    client.post("/ingest/portable/batch", json={"readings": sent})
+    stored = [args[0].timestamp for args, _ in offline["write_reading"]]
+    assert [t.isoformat() for t in stored] == [s["timestamp"] for s in sent]
+    assert len(set(stored)) == 3  # three distinct moments, not three copies of "now"
+
+
+def test_batch_upserts_the_device_registry_once_not_per_reading(client, offline):
+    client.post("/ingest/portable/batch", json={
+        "readings": [_sample(30), _sample(20), _sample(10)],
+    })
+    assert len(offline["upsert_device"]) == 1
+    # ...and with the newest reading, so last_seen_at does not go backwards
+    reading = offline["upsert_device"][0][0][0]
+    assert reading.timestamp == max(args[0].timestamp for args, _ in offline["write_reading"])
+
+
+def test_batch_reports_unstorable_entries_without_losing_the_rest(client, offline):
+    # An unsynced device clock is permanent for that sample — it is reported as
+    # non-retryable so the phone drops it instead of jamming the queue forever.
+    bad = _sample(10)
+    bad["timestamp"] = "1970-01-01T00:00:00+00:00"
+    r = client.post("/ingest/portable/batch", json={"readings": [_sample(20), bad, _sample(5)]})
+    body = r.json()
+    assert body["stored"] == 2
+    assert body["failed"] == [{"index": 1, "error": "CLOCK_UNSYNCED", "retryable": False}]
+
+
+def test_batch_marks_a_store_failure_retryable(client, monkeypatch, offline):
+    def boom(*a, **k):
+        raise RuntimeError("influx unreachable")
+
+    monkeypatch.setattr(writers, "write_reading", boom)
+    r = client.post("/ingest/portable/batch", json={"readings": [_sample(10)]})
+    body = r.json()
+    assert body["stored"] == 0
+    assert body["failed"] == [{"index": 0, "error": "STORE_FAILED", "retryable": True}]
+
+
+def test_batch_applies_the_same_quality_gate_as_a_single_reading(client, offline):
+    # An impossible PM value is still recorded (flagged) — identical to the single path.
+    bad = _sample(10, pm25=9999.0)
+    r = client.post("/ingest/portable/batch", json={"readings": [bad]})
+    assert r.json()["stored"] == 1
+    quality = offline["write_reading"][0][0][1]
+    assert quality.pm25_valid is False
+
+
+def test_batch_refuses_more_than_the_cap(client, offline):
+    r = client.post("/ingest/portable/batch", json={"readings": [_sample(1)] * 501})
+    assert r.status_code == 422
+    assert offline["write_reading"] == []
+
+
+def test_empty_batch_is_a_no_op(client, offline):
+    r = client.post("/ingest/portable/batch", json={"readings": []})
+    assert r.json() == {"accepted": True, "received": 0, "stored": 0, "failed": []}
+    assert offline["write_reading"] == []

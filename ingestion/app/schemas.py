@@ -30,6 +30,24 @@ class PortableTelemetry(BaseModel):
     # measurement (the SCD40 measures real CO2).
 
 
+# Upper bound on one batch. A portable buffers at 5 s/sample, so 500 covers ~40 min of
+# backlog in a single request; a longer outage simply drains over several requests. The cap
+# exists so one client cannot hold a worker for an unbounded time.
+PORTABLE_BATCH_MAX = 500
+
+
+class PortableTelemetryBatch(BaseModel):
+    """A replayed backlog from the phone gateway (`POST /ingest/portable/batch`).
+
+    Each entry is an ordinary ``PortableTelemetry`` carrying the timestamp it was CAPTURED at,
+    not the time it was uploaded — the whole point of the buffer is that a sample keeps its own
+    moment. Ordered oldest-first by convention; the server does not rely on that.
+    """
+
+    schema_version: str = "1.0"
+    readings: list[PortableTelemetry] = Field(default_factory=list, max_length=PORTABLE_BATCH_MAX)
+
+
 # ── Station (AirSentinel 1.2) — from HiveMQ webhook ──
 class LocationPayload(BaseModel):
     lat: float = 0.0

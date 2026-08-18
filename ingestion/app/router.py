@@ -2,6 +2,8 @@
 
 - Station: `POST /webhook/telemetry` (HiveMQ webhook, HMAC-signed raw body)
 - Portable: `POST /ingest/portable` (phone gateway over HTTPS)
+- Portable backlog: `POST /ingest/portable/batch` (replay of samples the phone buffered
+  while it could not reach the API — each keeps its own capture timestamp)
 - Alerts:  `POST /webhook/alert`
 
 Both telemetry paths: parse → adapt to a Reading → SHARED validate (§5.1) → store. An invalid
@@ -18,7 +20,7 @@ from fastapi import APIRouter, Request
 
 from . import adapters, writers
 from .hmac_util import verify_signature
-from .schemas import AlertPayload, PortableTelemetry, StationTelemetry
+from .schemas import AlertPayload, PortableTelemetry, PortableTelemetryBatch, StationTelemetry
 from .validate import validate
 
 log = logging.getLogger("aeris.ingestion")
@@ -38,7 +40,7 @@ def _clock_is_plausible(ts: datetime, now: datetime | None = None) -> bool:
     return _CLOCK_FLOOR <= ts <= now + _CLOCK_SKEW_AHEAD
 
 
-def _ingest_reading(reading, source: str) -> dict:
+def _ingest_reading(reading, source: str, *, register_device: bool = True) -> dict:
     if not _clock_is_plausible(reading.timestamp):
         log.warning(
             "%s reading from %s rejected: device clock unsynced (ts=%s)",
@@ -67,7 +69,8 @@ def _ingest_reading(reading, source: str) -> dict:
             "error": "STORE_FAILED",
             "reasons": ["STORE_FAILED"],
         }
-    writers.upsert_device(reading, source)
+    if register_device:
+        writers.upsert_device(reading, source)
     return {
         "accepted": True,
         "device_id": reading.device_id,
@@ -83,6 +86,49 @@ def _ingest_reading(reading, source: str) -> dict:
 async def ingest_portable(payload: PortableTelemetry) -> dict:
     reading = adapters.portable_to_reading(payload)
     return _ingest_reading(reading, "portable")
+
+
+# Retrying a STORE_FAILED entry can succeed later; retrying a CLOCK_UNSYNCED one never can,
+# because the fault is in the timestamp the sample carries. The phone needs to tell those apart
+# to know what to keep in its outbox, so the reason travels back per entry.
+_RETRYABLE_ERRORS = {"STORE_FAILED"}
+
+
+@router.post("/ingest/portable/batch")
+async def ingest_portable_batch(payload: PortableTelemetryBatch) -> dict:
+    """Replay a phone's buffered backlog in one request.
+
+    Same validation as the single-reading path — each entry goes through the identical §5.1
+    gate and keeps its own capture timestamp, so a drained buffer lands as the history it
+    actually was, not as a burst at the moment of upload. InfluxDB point identity is
+    (measurement, tags, time), so re-sending an entry the server already stored overwrites it
+    rather than duplicating it; a phone that never saw the response can safely retry.
+
+    Only failures are itemised. The phone drops every entry the server did not mark retryable.
+    """
+    readings = [adapters.portable_to_reading(p) for p in payload.readings]
+    # One registry upsert per device per batch instead of one per reading: 500 sequential
+    # Supabase writes would dominate the request, and every one but the newest is stale anyway.
+    last_index_for_device: dict[str, int] = {}
+    for i, r in enumerate(readings):
+        prev = last_index_for_device.get(r.device_id)
+        if prev is None or r.timestamp >= readings[prev].timestamp:
+            last_index_for_device[r.device_id] = i
+    newest = set(last_index_for_device.values())
+
+    failed: list[dict] = []
+    stored = 0
+    for i, reading in enumerate(readings):
+        result = _ingest_reading(reading, "portable", register_device=i in newest)
+        if result["accepted"]:
+            stored += 1
+            continue
+        error = result.get("error", "UNKNOWN")
+        failed.append({"index": i, "error": error, "retryable": error in _RETRYABLE_ERRORS})
+
+    if failed:
+        log.warning("portable batch: %d/%d stored, %d failed", stored, len(readings), len(failed))
+    return {"accepted": True, "received": len(readings), "stored": stored, "failed": failed}
 
 
 @router.post("/webhook/telemetry")
