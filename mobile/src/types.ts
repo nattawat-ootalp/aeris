@@ -269,6 +269,150 @@ export interface PersonalPattern {
   note: string;
 }
 
+// ── §3 Route Exposure Simulator ─────────────────────────────────────────────────────────
+
+export interface ParameterSummary {
+  parameter: string;
+  unit: string;
+  average: number | null;
+  minimum: number | null;
+  maximum: number | null;
+  sample_count: number;
+  /** Sigma(C x dt) in <unit>-minutes. Environmental exposure, never an inhaled dose. */
+  exposure_integral: number | null;
+  exposure_unit: string | null;
+  time_above_threshold_s: number | null;
+  threshold: number | null;
+  covered_s: number;
+}
+
+export interface RoutePoint {
+  index: number;
+  lat: number;
+  lon: number;
+  distance_m: number;
+  time: string;
+  /** Null where no station was within max_sensor_distance_m — the gap is kept, not filled. */
+  sensor: string | null;
+  sensor_distance_m: number | null;
+  values: Record<string, number>;
+}
+
+export interface SimulationResult {
+  distance_m: number;
+  duration_s: number;
+  /** 0..1 — route points that resolved to a reading (§3.11). */
+  coverage: number;
+  route: {
+    provider: string;
+    profile: string;
+    distance_m: number;
+    provider_duration_s: number | null;
+    note: string | null;
+  };
+  travel_mode: string;
+  speed_mps: number;
+  start_time: string;
+  sensors_used: string[];
+  sensors_considered: string[];
+  results: Record<string, ParameterSummary>;
+  points: RoutePoint[];
+  disclaimer: string;
+}
+
+export interface SimulatorConfig {
+  parameters: Record<string, { unit: string }>;
+  default_thresholds: Record<string, number>;
+  travel_modes: Record<string, { default_speed_mps: number; profile: string }>;
+  interpolation_modes: string[];
+  defaults: { sampling_distance_m: number; max_sensor_distance_m: number; max_gap_s: number };
+  stations: { node_code: string; name: string; lat: number; lon: number }[];
+}
+
+export interface SimulateInput {
+  start: { lat: number; lng: number };
+  destination: { lat: number; lng: number };
+  start_time: string;
+  travel_mode: string;
+  speed_mps?: number;
+  sampling_distance_m?: number;
+  max_sensor_distance_m?: number;
+  parameters: string[];
+  interpolation?: string;
+  label?: string;
+}
+
+// ── §4 Air Quality Time Machine ─────────────────────────────────────────────────────────
+
+/** One instant, every station that recorded in it. A station absent from `stations` recorded
+ *  nothing in that window — it is never carried forward from the previous frame. */
+export interface ReplayFrame {
+  timestamp: string;
+  stations: Record<string, Record<string, number>>;
+}
+
+export interface ReplayData {
+  start: string;
+  end: string;
+  interval: string;
+  /** True when the server used a coarser interval than asked, to keep the payload bounded. */
+  interval_coarsened: boolean;
+  requested_interval: string | null;
+  station_ids: string[];
+  parameters: Record<string, { unit: string }>;
+  frame_count: number;
+  frames: ReplayFrame[];
+  stats: Record<string, Record<string, {
+    minimum: number; maximum: number; average: number; samples: number; unit: string;
+  }>>;
+  stations_with_data: string[];
+}
+
+export interface ReplayStation {
+  node_code: string;
+  name: string;
+  lat: number;
+  lon: number;
+  active: boolean;
+  last_seen: string | null;
+}
+
+export interface ReplayStations {
+  stations: ReplayStation[];
+  intervals: string[];
+  parameters: Record<string, { unit: string }>;
+  max_frames: number;
+  max_span_days: number;
+}
+
+export interface CompareRow {
+  station_id: string;
+  value_a: number | null;
+  value_b: number | null;
+  difference: number | null;
+  percent_change: number | null;
+  status: 'ok' | 'no_data';
+}
+
+export interface CompareResult {
+  parameter: string;
+  unit: string;
+  time_a: string;
+  time_b: string;
+  window_s: number;
+  rows: CompareRow[];
+}
+
+export interface ReplayBookmark {
+  id: string;
+  timestamp: string;
+  station_id: string | null;
+  parameter: string | null;
+  title: string;
+  note: string | null;
+  created_at: string;
+}
+
 /** Map a backend decision string to the closed watch vocabulary. */
 export function toWatchStatus(decision: DecisionEvent['decision']): WatchStatus {
   switch (decision) {

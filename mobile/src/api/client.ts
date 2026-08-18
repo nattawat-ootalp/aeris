@@ -6,6 +6,7 @@
 import { ensureSessionToken } from '../lib/supabase';
 import type {
   ActionPlan,
+  CompareResult,
   DailySummary,
   DataQuality,
   DecisionEvent,
@@ -19,7 +20,13 @@ import type {
   PersonalBaseline,
   PersonalPattern,
   PrivacySettings,
+  ReplayBookmark,
+  ReplayData,
+  ReplayStations,
   RiskScore,
+  SimulateInput,
+  SimulationResult,
+  SimulatorConfig,
   SosEvent,
   SosResult,
   SymptomEventInput,
@@ -47,6 +54,18 @@ export class ApiError extends Error {
 async function getJson<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`);
   if (!res.ok) throw new ApiError(res.status, `GET ${path} -> ${res.status}`);
+  return (await res.json()) as T;
+}
+
+/** Unauthenticated POST. Used only by the exposure simulator, which reads public station
+ *  data and writes nothing — saving a run goes through postJsonAuthed instead. */
+async function postJson<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new ApiError(res.status, `POST ${path} -> ${res.status}`);
   return (await res.json()) as T;
 }
 
@@ -321,4 +340,104 @@ export async function raiseSos(input: {
 
 export async function getSosEvents(limit = 20): Promise<{ events: SosEvent[] }> {
   return getJsonAuthed(`/me/sos?limit=${limit}`);
+}
+
+
+// ── §3 Route Exposure Simulator ─────────────────────────────────────────────────────────
+
+/** Run a simulation. Public — it reads station data, which is not personal. */
+export async function simulateExposure(input: SimulateInput): Promise<SimulationResult> {
+  return postJson('/exposure/simulate', input);
+}
+
+export async function getSimulatorConfig(): Promise<SimulatorConfig> {
+  return getJson('/exposure/config');
+}
+
+/** Keep a run. Requires a session — a saved route says where someone went and when. */
+export async function saveSimulation(
+  input: SimulateInput,
+  result: SimulationResult,
+): Promise<{ saved: boolean }> {
+  return postJsonAuthed('/exposure/simulations', {
+    ...input,
+    results: result.results,
+    distance_m: result.distance_m,
+    duration_s: result.duration_s,
+    coverage: result.coverage,
+    route_provider_used: result.route.provider,
+  });
+}
+
+// ── §4 Air Quality Time Machine ─────────────────────────────────────────────────────────
+
+export async function getReplayStations(): Promise<ReplayStations> {
+  return getJson('/replay/stations');
+}
+
+export async function getReplayData(params: {
+  stationIds: string[];
+  start: string;
+  end: string;
+  parameters: string[];
+  interval?: string;
+}): Promise<ReplayData> {
+  const q = new URLSearchParams({
+    station_ids: params.stationIds.join(','),
+    start: params.start,
+    end: params.end,
+    parameters: params.parameters.join(','),
+  });
+  if (params.interval) q.set('interval', params.interval);
+  return getJson(`/replay/data?${q.toString()}`);
+}
+
+export async function compareReplay(params: {
+  stationIds: string[];
+  timeA: string;
+  timeB: string;
+  parameter: string;
+}): Promise<CompareResult> {
+  const q = new URLSearchParams({
+    station_ids: params.stationIds.join(','),
+    time_a: params.timeA,
+    time_b: params.timeB,
+    parameter: params.parameter,
+  });
+  return getJson(`/replay/compare?${q.toString()}`);
+}
+
+/** Absolute URL for an export, so a browser can download it directly.
+ *  Returned rather than fetched: routing the bytes through JS would buy nothing and would
+ *  lose the Content-Disposition filename the server already sets. */
+export function replayExportUrl(
+  format: 'csv' | 'json',
+  params: { stationIds: string[]; start: string; end: string; parameters: string[]; interval?: string },
+): string {
+  const q = new URLSearchParams({
+    station_ids: params.stationIds.join(','),
+    start: params.start,
+    end: params.end,
+    parameters: params.parameters.join(','),
+  });
+  if (params.interval) q.set('interval', params.interval);
+  return `${BASE_URL}/replay/export.${format}?${q.toString()}`;
+}
+
+export async function getReplayBookmarks(): Promise<{ bookmarks: ReplayBookmark[] }> {
+  return getJsonAuthed('/replay/bookmarks');
+}
+
+export async function createReplayBookmark(payload: {
+  timestamp: string;
+  station_id?: string | null;
+  parameter?: string | null;
+  title: string;
+  note?: string | null;
+}): Promise<{ created: boolean; bookmark: ReplayBookmark | null }> {
+  return postJsonAuthed('/replay/bookmarks', payload);
+}
+
+export async function deleteReplayBookmark(id: string): Promise<{ deleted: boolean }> {
+  return deleteAuthed(`/replay/bookmarks/${encodeURIComponent(id)}`);
 }

@@ -5,20 +5,38 @@ uvicorn entrypoint referenced by the Dockerfile: ``core_api.app.main:app``.
 """
 from __future__ import annotations
 
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+import observability
 from ingestion.app.config import settings
 from ingestion.app.router import router as ingestion_router
 
+from .monitor_api import router as monitor_router
 from .read_api import router as core_router
+from .telemetry_middleware import MetricsMiddleware
 from .realtime import router as ws_router
+from .replay_api import router as replay_router
+from .simulator_api import router as simulator_router
+
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+)
+# Ships logs and metrics to Grafana Cloud when GRAFANA_* is configured, and does nothing at
+# all when it is not. Called before the app is built so startup itself is captured.
+observability.init(service="core-api")
 
 app = FastAPI(
     title="Aeris API",
     version="0.1.0",
     summary="Personal environmental exposure & decision support (non-diagnostic).",
 )
+
+# Outermost, so a request rejected by CORS is still counted: "nothing reached the API" and
+# "the browser was refused" look identical from the outside and are fixed differently.
+app.add_middleware(MetricsMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -31,11 +49,16 @@ app.add_middleware(
 app.include_router(ingestion_router)
 app.include_router(core_router)
 app.include_router(ws_router)
+app.include_router(simulator_router)
+app.include_router(replay_router)
+app.include_router(monitor_router)
 
 
 @app.get("/health", tags=["meta"])
 def health() -> dict:
-    return {"status": "ok", "service": "aeris-core-api"}
+    # Carries the shipper's own state: monitoring that has silently stopped shipping looks
+    # exactly like a system with nothing to report, and this is where the two are told apart.
+    return {"status": "ok", "service": "aeris-core-api", "observability": observability.health()}
 
 
 @app.get("/health/auth", tags=["meta"])

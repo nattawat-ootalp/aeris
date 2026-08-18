@@ -286,3 +286,92 @@ def get_ranking(now: datetime, top_n: int = 5, max_age_sec: float = 900) -> list
 
 def set_threshold(node_code: str, payload: dict) -> list:
     return supa.sb_post("threshold_config", {"node_code": node_code, **payload})
+
+
+# ── §3.16 saved simulations / §4.15 replay bookmarks ─────────────────────────────────────
+#
+# These store what a person CHOSE — a route they set up, a moment they marked — never a
+# measurement. Re-opening a saved run reads the series from InfluxDB again rather than
+# trusting a stored copy, so a correction to the underlying data is never contradicted by a
+# stale summary sitting in Postgres.
+
+def save_simulation(user_sub: str, payload: dict, results: dict) -> dict:
+    """Insert one run plus a row per parameter, and return the stored run."""
+    rows = supa.sb_post(
+        "exposure_simulations",
+        {"user_id": user_sub, **payload},
+        headers={"Prefer": "return=representation"},
+    )
+    if not rows:
+        return {}
+    sim = rows[0]
+    result_rows = [
+        {
+            "simulation_id": sim["id"],
+            "parameter": name,
+            "unit": summary.get("unit"),
+            "average_value": summary.get("average"),
+            "minimum_value": summary.get("minimum"),
+            "maximum_value": summary.get("maximum"),
+            "exposure_integral": summary.get("exposure_integral"),
+            "exposure_unit": summary.get("exposure_unit"),
+            "threshold_value": summary.get("threshold"),
+            # The column is an integer of seconds; the summary carries a float because the
+            # crossing point between two samples rarely lands on a whole second.
+            "time_above_threshold": (
+                None if summary.get("time_above_threshold_s") is None
+                else int(round(summary["time_above_threshold_s"]))
+            ),
+            "sample_count": summary.get("sample_count", 0),
+            "covered_s": summary.get("covered_s"),
+            "data_coverage": payload.get("data_coverage"),
+        }
+        for name, summary in (results or {}).items()
+    ]
+    if result_rows:
+        supa.sb_post("exposure_results", result_rows)
+    return sim
+
+
+def list_simulations(user_sub: str, limit: int = 20) -> list:
+    return supa.sb_get(
+        "exposure_simulations",
+        {"user_id": f"eq.{user_sub}", "order": "created_at.desc", "limit": str(limit)},
+    )
+
+
+def get_simulation(user_sub: str, simulation_id: str) -> dict | None:
+    # Scoped by user_id as well as id: the backend holds the service_role key and so bypasses
+    # RLS, which makes the ownership check this function's own responsibility.
+    rows = supa.sb_get(
+        "exposure_simulations",
+        {"id": f"eq.{simulation_id}", "user_id": f"eq.{user_sub}"},
+    )
+    if not rows:
+        return None
+    sim = rows[0]
+    sim["results"] = supa.sb_get(
+        "exposure_results", {"simulation_id": f"eq.{simulation_id}"}
+    )
+    return sim
+
+
+def add_bookmark(user_sub: str, payload: dict) -> list:
+    return supa.sb_post(
+        "replay_bookmarks",
+        {"user_id": user_sub, **payload},
+        headers={"Prefer": "return=representation"},
+    )
+
+
+def list_bookmarks(user_sub: str, limit: int = 100) -> list:
+    return supa.sb_get(
+        "replay_bookmarks",
+        {"user_id": f"eq.{user_sub}", "order": "timestamp.desc", "limit": str(limit)},
+    )
+
+
+def delete_bookmark(user_sub: str, bookmark_id: str) -> list:
+    return supa.sb_delete(
+        "replay_bookmarks", {"id": f"eq.{bookmark_id}", "user_id": f"eq.{user_sub}"}
+    )

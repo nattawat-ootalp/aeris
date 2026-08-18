@@ -3,6 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Platform } from 'react-native';
 import { NAV_RAIL_WIDTH, useIsWide } from '../lib/responsive';
 import { colors, shadow, space } from '../theme';
+import { DashboardStackNavigator } from './DashboardStack';
 import { ExploreStackNavigator } from './ExploreStack';
 import { ExposureStackNavigator } from './ExposureStack';
 import { HistoryStackNavigator } from './HistoryStack';
@@ -15,6 +16,7 @@ const ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   HomeTab: 'home-outline',
   ExposureTab: 'trending-up-outline',
   ExploreTab: 'location-outline',
+  DashboardTab: 'analytics-outline',
   HistoryTab: 'time-outline',
   ProfileTab: 'person-outline',
 };
@@ -65,6 +67,11 @@ export function MainTabs() {
       <Tab.Screen name="HomeTab" component={HomeStackNavigator} options={{ title: 'Home' }} />
       <Tab.Screen name="ExposureTab" component={ExposureStackNavigator} options={{ title: 'Exposure' }} />
       <Tab.Screen name="ExploreTab" component={ExploreStackNavigator} options={{ title: 'Explore' }} />
+      {/* Analysis tools are web-only: the setup panels and the timeline scrubber need a
+          desktop-width window, and a sixth tab would crowd the five a phone actually uses. */}
+      {Platform.OS === 'web' ? (
+        <Tab.Screen name="DashboardTab" component={DashboardStackNavigator} options={{ title: 'Analyse' }} />
+      ) : null}
       <Tab.Screen name="HistoryTab" component={HistoryStackNavigator} options={{ title: 'History' }} />
       <Tab.Screen name="ProfileTab" component={ProfileStackNavigator} options={{ title: 'Profile' }} />
     </Tab.Navigator>

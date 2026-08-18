@@ -27,6 +27,7 @@ const DOCUMENT_TITLES: Record<string, string> = {
   HomeTab: 'หน้าแรก',
   ExposureTab: 'ไทม์ไลน์การรับสัมผัส',
   ExploreTab: 'แผนที่',
+  DashboardTab: 'จำลองการรับสัมผัส',
   HistoryTab: 'ประวัติรายสัปดาห์',
   ProfileTab: 'โปรไฟล์',
 
@@ -41,6 +42,8 @@ const DOCUMENT_TITLES: Record<string, string> = {
   ExploreMap: 'แผนที่',
   DestinationAssessment: 'ประเมินปลายทาง',
   CompareLocations: 'เปรียบเทียบสถานที่',
+  ExposureSimulator: 'จำลองการรับสัมผัสตามเส้นทาง',
+  TimeMachine: 'ย้อนดูข้อมูลตามเวลา',
   WeeklyHistory: 'ประวัติรายสัปดาห์',
   PersonalBaseline: 'ค่าฐานส่วนบุคคล',
   PersonalPattern: 'รูปแบบส่วนบุคคล',
@@ -100,6 +103,15 @@ export const linking: LinkingOptions<RootStackParamList> = {
                 stringify: { lat: String, lon: String },
               },
               CompareLocations: 'explore/compare',
+            },
+          },
+          // Present in the URL map on every platform: the native build never mounts the tab
+          // (MainTabs gates it), so these paths simply never match there, and keeping them
+          // unconditional means one config rather than two that can drift.
+          DashboardTab: {
+            screens: {
+              ExposureSimulator: 'analyse/simulator',
+              TimeMachine: 'analyse/time-machine',
             },
           },
           HistoryTab: {

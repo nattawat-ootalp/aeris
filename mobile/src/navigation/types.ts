@@ -33,6 +33,12 @@ export type HistoryStackParamList = {
   PersonalPattern: undefined;
 };
 
+/** Analysis dashboard — web only (see DashboardStack). */
+export type DashboardStackParamList = {
+  ExposureSimulator: undefined;
+  TimeMachine: undefined;
+};
+
 export type ProfileStackParamList = {
   ProfileSettings: undefined;
   SensorHealth: undefined;
