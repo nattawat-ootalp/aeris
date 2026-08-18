@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import httpx
+
 from ingestion.app import supa
 from intelligence.models import Reading
 from intelligence.parsing import parse_timestamp
@@ -288,6 +290,31 @@ def set_threshold(node_code: str, payload: dict) -> list:
     return supa.sb_post("threshold_config", {"node_code": node_code, **payload})
 
 
+class UnknownOwnerError(RuntimeError):
+    """The token's subject is not a row in ``auth.users``.
+
+    Both tables below key on ``user_id`` with a foreign key to Supabase Auth, so a token that
+    verifies but names an account that does not exist fails at the insert. That is a real
+    condition — an internally minted admin token, or an account deleted mid-session — and
+    letting the PostgREST error escape turns it into a bare 500 that says nothing about which
+    of the many things involved went wrong.
+    """
+
+
+# PostgreSQL's foreign-key violation. PostgREST forwards the SQLSTATE, which is the only part
+# of the message stable enough to branch on.
+_FK_VIOLATION = "23503"
+
+
+def _post_owned(table: str, payload, headers: dict | None = None) -> list:
+    try:
+        return supa.sb_post(table, payload, headers=headers)
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 409 and _FK_VIOLATION in e.response.text:
+            raise UnknownOwnerError(table) from e
+        raise
+
+
 # ── §3.16 saved simulations / §4.15 replay bookmarks ─────────────────────────────────────
 #
 # These store what a person CHOSE — a route they set up, a moment they marked — never a
@@ -297,7 +324,7 @@ def set_threshold(node_code: str, payload: dict) -> list:
 
 def save_simulation(user_sub: str, payload: dict, results: dict) -> dict:
     """Insert one run plus a row per parameter, and return the stored run."""
-    rows = supa.sb_post(
+    rows = _post_owned(
         "exposure_simulations",
         {"user_id": user_sub, **payload},
         headers={"Prefer": "return=representation"},
@@ -357,7 +384,7 @@ def get_simulation(user_sub: str, simulation_id: str) -> dict | None:
 
 
 def add_bookmark(user_sub: str, payload: dict) -> list:
-    return supa.sb_post(
+    return _post_owned(
         "replay_bookmarks",
         {"user_id": user_sub, **payload},
         headers={"Prefer": "return=representation"},

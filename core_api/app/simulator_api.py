@@ -227,26 +227,29 @@ def save_simulation(req: SaveSimulationRequest, user: dict = Depends(require_use
     if not sub:
         raise HTTPException(401, "token has no subject")
 
-    rows = repo.save_simulation(
-        user_sub=sub,
-        payload={
-            "label": req.label,
-            "start_lat": req.start.lat,
-            "start_lng": req.start.lng,
-            "destination_lat": req.destination.lat,
-            "destination_lng": req.destination.lng,
-            "start_time": req.start_time.isoformat(),
-            "travel_mode": req.travel_mode,
-            "speed_mps": req.speed_mps or routing.default_speed_mps(req.travel_mode),
-            "sampling_distance_m": req.sampling_distance_m,
-            "max_sensor_distance_m": req.max_sensor_distance_m,
-            "route_provider": req.route_provider_used or req.route_provider,
-            "distance_m": req.distance_m,
-            "duration_s": req.duration_s,
-            "data_coverage": req.coverage,
-        },
-        results=req.results,
-    )
+    try:
+        rows = repo.save_simulation(
+            user_sub=sub,
+            payload={
+                "label": req.label,
+                "start_lat": req.start.lat,
+                "start_lng": req.start.lng,
+                "destination_lat": req.destination.lat,
+                "destination_lng": req.destination.lng,
+                "start_time": req.start_time.isoformat(),
+                "travel_mode": req.travel_mode,
+                "speed_mps": req.speed_mps or routing.default_speed_mps(req.travel_mode),
+                "sampling_distance_m": req.sampling_distance_m,
+                "max_sensor_distance_m": req.max_sensor_distance_m,
+                "route_provider": req.route_provider_used or req.route_provider,
+                "distance_m": req.distance_m,
+                "duration_s": req.duration_s,
+                "data_coverage": req.coverage,
+            },
+            results=req.results,
+        )
+    except repo.UnknownOwnerError as e:
+        raise HTTPException(409, "no such account — a saved run belongs to a signed-in user") from e
     return {"saved": True, "simulation": rows}
 
 

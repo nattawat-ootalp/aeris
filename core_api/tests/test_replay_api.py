@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from core_api.app import repo, replay_api
 from core_api.app.destination import NodeContext
 from core_api.app.main import app
+from core_api.app.security import create_token
 
 client = TestClient(app)
 
@@ -158,6 +159,27 @@ def test_station_list_reports_what_can_be_replayed(monkeypatch):
     body = client.get("/replay/stations").json()
     assert [s["node_code"] for s in body["stations"]] == ["AQ001", "AQ002"]
     assert "1m" in body["intervals"]
+
+
+def test_an_unknown_account_is_reported_rather_than_500ing(monkeypatch):
+    """A token that verifies but names no real account must say so.
+
+    Both tables key on auth.users through a foreign key, so this is a real condition — an
+    internally minted admin token, or an account deleted mid-session. Letting PostgREST's
+    error escape turned it into a bare 500 that named none of the several things involved.
+    """
+    from core_api.app import repo as repo_module
+
+    def boom(*a, **k):
+        raise repo_module.UnknownOwnerError("replay_bookmarks")
+
+    monkeypatch.setattr(repo_module, "add_bookmark", boom)
+    token = create_token("00000000-0000-0000-0000-000000000000")
+    r = client.post("/replay/bookmarks",
+                    headers={"Authorization": f"Bearer {token}"},
+                    json={"timestamp": T0.isoformat(), "title": "probe"})
+    assert r.status_code == 409
+    assert "account" in r.json()["detail"]
 
 
 def test_bookmarks_require_a_token():

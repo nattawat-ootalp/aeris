@@ -284,13 +284,16 @@ def create_bookmark(payload: BookmarkPayload, user: dict = Depends(require_user)
     sub = user.get("sub")
     if not sub:
         raise HTTPException(401, "token has no subject")
-    rows = repo.add_bookmark(sub, {
-        "timestamp": payload.timestamp.isoformat(),
-        "station_id": payload.station_id,
-        "parameter": payload.parameter,
-        "title": payload.title,
-        "note": payload.note,
-    })
+    try:
+        rows = repo.add_bookmark(sub, {
+            "timestamp": payload.timestamp.isoformat(),
+            "station_id": payload.station_id,
+            "parameter": payload.parameter,
+            "title": payload.title,
+            "note": payload.note,
+        })
+    except repo.UnknownOwnerError as e:
+        raise HTTPException(409, "no such account — a bookmark belongs to a signed-in user") from e
     return {"created": True, "bookmark": rows[0] if rows else None}
 
 
