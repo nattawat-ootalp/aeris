@@ -134,6 +134,32 @@ arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc firmware/portable
 arduino-cli upload -p COM13 --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc firmware/portable
 ```
 
+Libraries: `NimBLE-Arduino`, `ArduinoJson`, plus the sensor drivers (`Sensirion I2C SCD4x`,
+`Sensirion Core`, `SparkFun SGP30`, `PMS Library`). The station additionally needs
+`PubSubClient`. Install with `arduino-cli lib install "NimBLE-Arduino" "ArduinoJson"
+"PubSubClient"`.
+
+**If your Arduino `libraries` folder is inside OneDrive**, the build can fail with
+`fatal error: .../host/ble_gap.h: Permission denied`. That is not a code problem: OneDrive
+Files-On-Demand leaves headers as unhydrated placeholders, and NimBLE has hundreds of them, so
+the compiler is denied a file that appears to exist. Either mark the folder "Always keep on this
+device", or build against a copy outside OneDrive:
+
+```
+arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc --libraries C:\path\to\libs firmware/portable
+```
+
+Reference sizes for a clean build (esp32 core 3.3.10, NimBLE 2.5.0, ArduinoJson 7.4.3), useful
+for spotting when something has grown unexpectedly:
+
+| Sketch | Flash | RAM (globals) |
+|---|---|---|
+| `firmware/portable` | 617,561 B — 47% | 54,588 B — 16% |
+| `firmware/station` | 1,068,625 B — 81% | 74,196 B — 22% |
+
+Both figures already include the replay ring buffers (~20 KB portable, ~26 KB station), which
+are statically allocated and so show up in the globals column rather than at runtime.
+
 `CDCOnBoot=cdc` is **required**, not cosmetic. The board option defaults to *Disabled*, which
 routes `Serial` to the UART0 pins instead of USB — the sketch then runs correctly but prints
 nothing to the USB port, which looks exactly like a failed flash. Keep the same option on
