@@ -18,8 +18,13 @@ void initBLE();
 // tvoc (ppb) / eco2 (ppm, estimated) are read from data.tvoc/data.eco2 and included only
 // when data.sgp30_valid — never a fabricated value during warmup or when the chip is absent.
 void bleNotifyTelemetry(const SensorData& data, bool sensorsValid, int battery_pct, float quality_score);
+// Hand buffered samples to a reconnected phone, a few per call. Call every loop; it is a
+// no-op while disconnected or once the buffer is empty. Replayed frames carry "buf":true so
+// the phone stores them as history and never shows them as the current reading.
+void bleServiceBuffer();
 // sensor_status: PM validity only ("OK"/"ERROR"). sgp30_status: "OK"|"WARMUP"|"ERROR",
-// see portable.ino's sgp30StatusString().
+// see portable.ino's sgp30StatusString(). Also reports `buffered` (samples waiting for a
+// phone) and `dropped` (samples the ring had to evict since boot).
 void bleNotifyStatus(int battery_pct, const char* sensor_status, const char* sgp30_status, const char* fw_version);
 // Emergency event raised by the user pressing the SOS button on the portable.
 // The firmware only reports THAT the button was pressed — it never assesses the situation.

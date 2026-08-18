@@ -78,8 +78,14 @@ export function PortableProvider({ children }: { children: ReactNode }) {
           await connectAndSubscribe(
             device,
             (t) => {
-              setTelemetry(t);
-              setLastSeenAt(Date.now());
+              // A replayed sample describes the air at some earlier moment, so it must not
+              // become the reading on screen — that would show the user a measurement from
+              // half an hour ago as if it were the room they are standing in. It is still
+              // real data and still belongs in the record, so it goes to the backend either way.
+              if (!t.buf) {
+                setTelemetry(t);
+                setLastSeenAt(Date.now());
+              }
               // Queue for the backend rather than firing and forgetting: an upload that fails
               // used to lose the sample outright. The timestamp is when the DEVICE measured it,
               // reconstructed from its uptime counter — stamping "now" would be a lie for

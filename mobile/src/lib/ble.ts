@@ -28,7 +28,12 @@ export interface PortableTelemetry {
   /** Reflects PM sensor validity only — does NOT indicate SGP30/VOC health. */
   sensor_status: 'OK' | 'WARMUP' | 'ERROR';
   quality_score: number;
+  /** Seconds since the DEVICE booted, not an epoch — the portable has no clock. Paired with the
+   *  phone's clock by src/lib/deviceClock.ts to recover when the reading was captured. */
   ts: number;
+  /** True when the device is replaying a sample it took while no phone was connected. Such a
+   *  reading is history: store it, never present it as the current air. */
+  buf?: boolean;
 }
 
 /** Device-status characteristic payload (docs/ble-contract.md). Reports the device's own
@@ -39,6 +44,11 @@ export interface PortableStatus {
   sensor_status?: 'OK' | 'WARMUP' | 'ERROR';
   fw?: string;
   sgp30?: 'OK' | 'WARMUP' | 'ERROR';
+  /** Samples the device took while no phone was connected and is still holding for replay. */
+  buffered?: number;
+  /** Samples the device's ring buffer had to evict since boot because it filled up. Non-zero
+   *  means the record has a hole the device could not avoid — reported, never left implicit. */
+  dropped?: number;
 }
 
 /** SOS characteristic payload. The device reports only that the button was pressed and when —

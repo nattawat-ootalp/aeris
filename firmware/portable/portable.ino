@@ -2,6 +2,10 @@
 //  Aeris Portable — Main Firmware (ESP32-S3)
 //  Personal Environmental Exposure — BLE-only (no WiFi/MQTT)
 //
+//  Readings taken while no phone is connected are held in a ring buffer (buffer.h) and
+//  replayed on reconnect, so walking away from the phone leaves a gap in delivery but not in
+//  the record. See docs/ble-contract.md, "Buffered replay".
+//
 //  Sensors reused from AirSentinel: PMS7003 (PM2.5/PM10), SCD40 (Temp/Hum/CO2), SGP30 (TVOC/eCO2).
 //  Portable reports pm25/temperature/humidity/tvoc/eco2/battery/sensor_status/
 //  quality_score over BLE. tvoc/eco2 (SGP30, estimated CO2-equivalent) are included only
@@ -21,7 +25,7 @@ static unsigned long lastBleNotify = 0;
 static unsigned long lastStatusNotify = 0;
 static SensorData latestData = {};
 
-#define FW_VERSION "1.1.0"
+#define FW_VERSION "1.2.0"
 // No fuel gauge wired in this MVP build — report a fixed placeholder rather than a
 // fabricated reading; a future revision should read a real ADC/fuel-gauge here.
 #define BATTERY_PLACEHOLDER_PCT 100
@@ -83,6 +87,10 @@ void loop() {
     Serial.println("[System] SOS button pressed — notifying phone");
     bleNotifySos((uint32_t)(millis() / 1000));
   }
+
+  // Hand over anything measured while no phone was listening. Rate-limited inside, so this
+  // runs alongside the live sample rather than blocking it.
+  bleServiceBuffer();
 
   if (now - lastStatusNotify >= STATUS_NOTIFY_INTERVAL_MS) {
     lastStatusNotify = now;

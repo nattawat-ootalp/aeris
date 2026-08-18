@@ -2,6 +2,7 @@
 
 The single source of truth shared by the **portable firmware** and the **mobile app**.
 Portable → BLE → phone (gateway) → HTTPS `/ingest/portable` → backend. Keep both sides in sync.
+Neither hop is assumed to be up: see "Buffered replay" below.
 
 ## Advertising
 - Device name: `Aeris-P<4hex>` (e.g. `Aeris-P0A1`). The `<4hex>` is the last 2 bytes of the MAC.
@@ -34,7 +35,8 @@ Portable → BLE → phone (gateway) → HTTPS `/ingest/portable` → backend. K
 | `battery` | int | % | never (placeholder if no fuel gauge wired) |
 | `sensor_status` | string | — | never |
 | `quality_score` | float | 0..1 | never |
-| `ts` | int | epoch seconds | never |
+| `ts` | int | seconds since device boot | never |
+| `buf` | bool | — | live readings — present (`true`) only on a replayed sample |
 
 - `sensor_status`: `OK` | `WARMUP` | `ERROR`, reflects **PM validity only**. If PM invalid, firmware sends `sensor_status:"ERROR"` and **omits `pm25`** (never a fabricated value) — the app/backend then produce No Data, not a PM caution. SGP30 health is **never** folded into `sensor_status` (see Device status below) — an absent/warming-up SGP30 must not suppress a perfectly good PM reading.
 - `co2`: from the **SCD40**, a **true NDIR CO2 measurement**. Sent with `temperature`/`humidity`
@@ -42,14 +44,54 @@ Portable → BLE → phone (gateway) → HTTPS `/ingest/portable` → backend. K
   and the two must never be merged, substituted for each other, or shown as one value: the app
   labels this one plainly "CO2" and keeps `eco2` marked "(estimated)".
 - `tvoc` / `eco2`: from the **SGP30**. **`eco2` is an *estimated* CO2-equivalent derived from VOC sensing — it is NOT a real CO2 measurement.** The SCD40's true NDIR CO2 is transmitted separately as `co2` above; apps/backends must not label `eco2` as "CO2" or treat it as interchangeable with the real reading. Both fields are **omitted entirely** (not sent as `0` or `null`) whenever the SGP30 is invalid — during its 15 s power-on warmup, after an I2C bus recovery re-warmup, or when the chip is not physically present on the bus. Omission is the sole "no data" signal; consumers must render "no data", never treat a missing field as 0.
-- `ts`: device epoch seconds (phone re-stamps with its own clock on ingest if device clock is unset).
+- `ts`: **seconds since the device booted** (`millis()/1000`), not an epoch. The portable has
+  no RTC and no network, so it cannot know the date. The phone recovers the real capture time
+  by anchoring this counter to its own clock on connect (`mobile/src/lib/deviceClock.ts`) and
+  re-anchoring when `ts` jumps backwards, which is what a reboot looks like. The phone must
+  NOT simply stamp the arrival time: that is indistinguishable from the truth for a live
+  reading and completely wrong for a replayed one.
 - MTU: request ≥185 so the JSON fits one notification; if MTU is small the firmware still keeps the JSON <180 bytes. Measured worst case (all fields present including `co2`, longest string/decimal cases): ~170 bytes.
 
 ### Device status JSON
 ```json
-{"battery":82,"sensor_status":"OK","fw":"1.0.0","sgp30":"OK"}
+{"battery":82,"sensor_status":"OK","fw":"1.2.0","sgp30":"OK","buffered":0,"dropped":0}
 ```
+- `buffered`: samples taken while no phone was connected that are still waiting to be replayed.
+- `dropped`: samples the ring buffer had to evict since boot because it filled up. Non-zero means
+  the record has a hole the device could not avoid. It is reported rather than left implicit —
+  a gap the phone cannot tell apart from "the device was switched off" is worse than a number.
 - `sgp30`: `OK` | `WARMUP` | `ERROR` — SGP30 chip health, separate from `sensor_status` (which stays PM-only). Firmware cannot distinguish "still warming up" from "chip not found" via the driver alone, so it uses a boot-window heuristic: not-ready within the first 20 s after boot reports `WARMUP`; not-ready after that (including a mid-run I2C-recovery re-warmup) reports `ERROR`. This means a bus-recovery event can under-report as `ERROR` instead of `WARMUP` — treat `ERROR` as "no current SGP30 data", not necessarily "hardware fault".
+
+### Buffered replay
+
+The portable measures every 5 s whether or not a phone is listening. A reading nobody received
+is a hole in the record, not a non-event — the device is the only place it exists, and once
+overwritten it is gone. So samples taken while disconnected (and any whose notification the BLE
+stack refuses) are held in a ring buffer and replayed when a phone reconnects.
+
+- **Capacity: 720 samples — one hour at the 5 s cadence** (`TELEMETRY_BUFFER_CAPACITY` in
+  `firmware/portable/buffer.h`). Stored packed, ~20 KB of SRAM; buffering the serialized JSON
+  instead would cost roughly six times that for the same hour.
+- **When full, the OLDEST sample is evicted** and counted in `dropped` above. Dropping the newest
+  instead would mean a phone reconnects to an hour of history that stops before the present,
+  which is the more misleading of the two failures.
+- **Replay starts ~1.5 s after connect**, once the phone has had time to finish discovery and
+  subscribe. It is rate-limited to a couple of notifications per firmware loop pass (~40/s), so a
+  full ring drains in about 20 s and the live 5 s sample keeps flowing throughout.
+- **A replayed frame is byte-identical to the live one it would have been, plus `"buf":true`.**
+  Every omit-when-invalid rule above still holds: validity is carried through the buffer as a
+  flag, never as a zero, so a replayed sample omits exactly the fields the live one would have.
+- **The phone must not display a `buf` sample as the current reading.** It describes the air at
+  an earlier moment; showing it as "now" would present a measurement from half an hour ago as the
+  room the user is standing in. It is still real data and still goes to the backend — the app
+  stores it and skips the live-reading update (`mobile/src/state/portable.tsx`).
+- A sample is removed from the buffer only after the radio has accepted the notification, so a
+  refused notify leaves it queued rather than consuming it.
+
+The phone has a matching buffer of its own for the next hop: readings it cannot upload go to an
+AsyncStorage outbox (`mobile/src/lib/outbox.ts`) and are replayed through
+`POST /ingest/portable/batch`. Between the two, a reading survives both the phone being out of
+range of the device and the device-plus-phone being out of range of the network.
 
 ### SOS characteristic
 
