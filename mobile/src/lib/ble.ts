@@ -99,7 +99,8 @@ export type ScanFailureReason =
   | 'bluetooth-off'
   | 'scan-error'
   | 'unsupported'
-  | 'cancelled';
+  | 'cancelled'
+  | 'blocked-by-policy';
 
 export async function scanForPortables(
   onFound: (device: Device) => void,

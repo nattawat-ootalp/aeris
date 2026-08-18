@@ -60,7 +60,8 @@ export type ScanFailureReason =
   | 'bluetooth-off'
   | 'scan-error'
   | 'unsupported'
-  | 'cancelled';
+  | 'cancelled'
+  | 'blocked-by-policy';
 
 // ── Minimal Web Bluetooth types ──
 // Declared here rather than pulled from @types/web-bluetooth: the API is used in exactly this
@@ -143,6 +144,14 @@ export async function scanForPortables(
       // The radio check separates a dismissed dialog from a machine that cannot scan at all.
       if (name === 'NotFoundError') {
         onFailure((await isBluetoothPoweredOn()) ? 'cancelled' : 'bluetooth-off');
+        return;
+      }
+      // A Permissions-Policy block and a real refusal are both SecurityError, and telling
+      // a user to change a phone setting when the site's own header is at fault sends them
+      // somewhere that cannot help. Separate the two so the message can say which it is.
+      const msg = e instanceof Error ? e.message : '';
+      if (/permissions policy/i.test(msg)) {
+        onFailure('blocked-by-policy');
         return;
       }
       if (name === 'SecurityError' || name === 'NotAllowedError') {

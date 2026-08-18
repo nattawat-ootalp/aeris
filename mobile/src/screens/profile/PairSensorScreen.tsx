@@ -66,6 +66,11 @@ function scanFailureLabel(reason: string): string {
       return Platform.OS === 'web'
         ? 'The browser blocked Bluetooth. On Android, turn Location on and give Chrome the Location permission, then reload this page and try again.'
         : 'Bluetooth permission was denied. Enable it in your phone\'s app settings and try again.';
+    case 'blocked-by-policy':
+      // Distinct from the case above: the site's own Permissions-Policy header refused the
+      // feature outright, so no device setting can help. Only a cached older copy of the
+      // page still sends that header.
+      return 'This page is not allowed to use Bluetooth. Reload it without cache — your browser is still serving an older copy of the site.';
     case 'bluetooth-off':
       return 'Bluetooth is turned off. Turn it on and try again.';
     case 'unsupported':
