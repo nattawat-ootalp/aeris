@@ -26,7 +26,10 @@
       },
       "permissions": [
         "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION"
+        "ACCESS_COARSE_LOCATION",
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.BLUETOOTH_CONNECT"
       ],
       "predictiveBackGestureEnabled": false
     },
@@ -38,10 +41,17 @@
         "react-native-ble-plx",
         {
           "isBackgroundEnabled": false,
-          "modes": ["central"],
+          "modes": [
+            "central"
+          ],
           "bluetoothAlwaysPermission": "Allow NextAir to connect to your NextAir Portable device over Bluetooth."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "6e5a1bf6-5e7d-47c0-98dc-95f1c8f09935"
+      }
+    }
   }
 }
