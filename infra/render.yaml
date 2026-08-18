@@ -2,9 +2,12 @@
 #
 # FREE-TIER TRADE-OFF (docs/DECISIONS.md, TDD §13):
 #   * `plan: free` web services SLEEP on idle (~50 s cold start on next request).
-#   * Because of that sleep, we do NOT run a persistent MQTT subscriber here.
-#     Station data arrives via HiveMQ webhook -> FastAPI HTTP (POST /webhook/telemetry,
-#     HMAC-signed with WEBHOOK_SECRET). No long-lived MQTT worker lives in this web service.
+#   * HiveMQ Cloud's free plan has NO webhook, so station telemetry cannot arrive at the API
+#     by itself. A subscriber must forward it — that is the second service below.
+#   * Render's free plan has no background worker either, so the bridge runs as a free *web*
+#     service: ingestion/mqtt_bridge.py binds $PORT with a status endpoint while the MQTT
+#     loop runs in the same process. Because a free service still sleeps on idle, an external
+#     pinger MUST poll the bridge's URL (see its `note` below) or ingestion stops.
 #   * Images are built from infra/Dockerfile (Python 3.12) — local Docker is not required.
 #
 # Deploy: create a new Blueprint in Render pointed at this repo, or `render blueprint launch`.
@@ -53,4 +56,45 @@ services:
       - key: WEBHOOK_SECRET
         sync: false
       - key: CORS_ORIGINS
+        sync: false
+
+  # ── Station telemetry bridge: HiveMQ MQTT -> POST /webhook/telemetry ──
+  # Free-tier shape borrowed from AirSentinel (backend/mqtt_bridge.py + its render.yaml),
+  # which runs the same subscriber this way. Uses the plain Python runtime rather than
+  # infra/Dockerfile: that image's CMD starts uvicorn, and this service is not the API.
+  - type: web
+    name: aeris-station-bridge
+    runtime: python
+    plan: free
+    region: singapore
+    buildCommand: pip install -r ingestion/requirements-bridge.txt
+    startCommand: python -m ingestion.mqtt_bridge
+    healthCheckPath: /
+    autoDeploy: false
+    # REQUIRED after the first deploy: register this service's URL with an external pinger
+    # (cron-job.org, UptimeRobot, …) at <=10 min interval. Render sleeps a free service after
+    # ~15 min without a request, and a sleeping bridge silently drops every reading — the
+    # station keeps publishing and the app just shows nothing.
+    envVars:
+      # Pin the interpreter: Render's default tracks new releases, and the API image is built
+      # for 3.12 (infra/Dockerfile). Keeping both on one version stops the two services from
+      # drifting apart on a redeploy.
+      - key: PYTHON_VERSION
+        value: "3.12.8"
+      # The deployed API this bridge forwards into.
+      - key: AERIS_API_BASE
+        value: https://aeris-core-api.onrender.com
+      # Topic root; must match ORG_ID in firmware/station/config.h.
+      - key: STATION_ORG
+        value: airsentinel-trat
+      - key: HIVEMQ_HOST
+        sync: false
+      - key: HIVEMQ_PORT
+        value: "8883"
+      - key: HIVEMQ_USERNAME
+        sync: false
+      - key: HIVEMQ_PASSWORD
+        sync: false
+      # Must be byte-identical to the API service's WEBHOOK_SECRET, or every forward 401s.
+      - key: WEBHOOK_SECRET
         sync: false

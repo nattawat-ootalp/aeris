@@ -1,0 +1,9 @@
+# Dependencies for the standalone MQTT->HTTP bridge (ingestion/mqtt_bridge.py) only.
+#
+# Deliberately not the repo-root requirements.txt: the bridge imports nothing from the API
+# beyond ingestion/app/config.py and hmac_util.py (stdlib + dotenv), so pulling in fastapi,
+# pydantic and influxdb-client would only slow every free-tier build and add compile failures
+# that have nothing to do with moving bytes from a broker to an HTTP endpoint.
+paho-mqtt==2.1.0
+httpx==0.28.1
+python-dotenv==1.0.1

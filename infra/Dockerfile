@@ -1,10 +1,10 @@
 # Aeris Core API — container image (TDD §13: FastAPI / Python 3.12).
 #
 # Free-tier note: this image runs the single FastAPI web service
-# (uvicorn target: core_api.app.main:app). Ingestion is webhook-driven
-# (HiveMQ webhook -> HTTP), so NO persistent MQTT subscriber runs here —
-# a Render free web service sleeps on idle and cannot hold a long-lived
-# MQTT connection (see docs/DECISIONS.md).
+# (uvicorn target: core_api.app.main:app). It exposes /webhook/telemetry but
+# does not subscribe to MQTT: HiveMQ's free plan has no webhook of its own, so
+# a separate subscriber (ingestion/mqtt_bridge.py, deployed as its own service
+# in infra/render.yaml) is what calls that endpoint. See docs/DECISIONS.md.
 #
 # Build context is the repo ROOT (see infra/render.yaml dockerContext: .).
 
