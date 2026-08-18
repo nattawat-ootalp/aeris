@@ -238,6 +238,10 @@ export interface SosResult {
 export interface PersonalBaseline {
   ready: boolean;
   sample_count: number;
+  /** Readings the engine requires before it will personalize at all. Comes from the backend
+   *  because it is configurable there; copying the number here would go stale on the first
+   *  tuning change and the app would misreport progress. */
+  min_samples: number;
   median: number | null;
   upper: number | null;
   current: number | null;

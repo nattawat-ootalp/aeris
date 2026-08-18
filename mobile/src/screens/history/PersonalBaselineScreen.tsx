@@ -26,7 +26,15 @@ export function PersonalBaselineScreen() {
         // instead of showing a range that isn't established yet.
         <>
           <EmptyState title="Not enough data yet — your baseline is still being learned" />
-          <Text style={styles.note}>{data?.sample_count ?? 0} readings collected so far.</Text>
+          <Text style={styles.note}>
+            {data?.sample_count ?? 0} of {data?.min_samples ?? 0} readings collected.
+          </Text>
+          {/* Knowing the target turns "not enough yet" into something the user can act on:
+              with a device connected the count climbs one reading every few seconds, so this
+              says whether to wait a moment or come back tomorrow. */}
+          <Text style={styles.note}>
+            Keep your device connected — it adds a reading every few seconds.
+          </Text>
         </>
       ) : (
         <>

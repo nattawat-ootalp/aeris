@@ -225,6 +225,11 @@ def device_baseline(device_id: str, user: dict = Depends(require_user)) -> dict:
     return {
         "ready": baseline.ready,
         "sample_count": baseline.sample_count,
+        # The threshold the engine actually applies, so the app can show progress towards it
+        # rather than an unqualified "not enough yet". Sent as data, not duplicated in the
+        # client, because it is configurable (BASELINE_MIN_SAMPLES) and a hardcoded copy would
+        # quietly start lying the first time it is tuned.
+        "min_samples": CONFIG.baseline_min_samples,
         "median": baseline.median,
         "upper": baseline.upper,
         "current": (latest or {}).get("pm2_5"),

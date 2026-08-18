@@ -10,6 +10,7 @@ from core_api.app import analytics, repo
 from core_api.app.destination import NodeContext
 from core_api.app.main import app
 from core_api.app.security import create_token
+from intelligence.config import CONFIG
 from intelligence.models import Reading
 
 client = TestClient(app)
@@ -141,6 +142,10 @@ def test_baseline_not_ready_below_minimum_samples(monkeypatch):
     monkeypatch.setattr(repo.influx_query, "latest_point", lambda d: {"pm2_5": 22.0, "time": "2026-08-15T10:00:00+00:00"})
     body = client.get("/devices/P001/baseline", headers=AUTH).json()
     assert body["ready"] is False and body["median"] is None
+    # The app shows progress towards readiness, so the target has to travel with the count —
+    # a copy hardcoded in the client would go stale the first time BASELINE_MIN_SAMPLES is tuned.
+    assert body["sample_count"] == 2
+    assert body["min_samples"] == CONFIG.baseline_min_samples > 2
     assert client.get("/devices/P001/baseline").status_code == 401
 
 
