@@ -82,3 +82,32 @@ def test_the_series_has_enough_spread_to_build_a_baseline_from(offline):
     # flags everything as unusual — no use to a demo and not what a real room looks like
     assert baseline.dispersion > 0
     assert baseline.median > 0
+
+
+def test_without_an_owner_the_device_is_not_registered_to_anyone(monkeypatch, offline):
+    registered: list = []
+    monkeypatch.setattr(seed_demo.repo, "upsert_device", lambda sub, d: registered.append((sub, d)))
+    seed_demo.main(["--device-id", "DEMO-ROOM-001", "--days", "1"])
+    assert registered == []
+
+
+def test_owner_registration_puts_the_device_where_the_app_looks_for_it(monkeypatch, offline):
+    # /me/devices is user-scoped: without a row keyed to the presenting account, the app keeps
+    # resolving whatever device that account already has and the seeded history never shows.
+    registered: list = []
+    monkeypatch.setattr(seed_demo.repo, "upsert_device", lambda sub, d: registered.append((sub, d)))
+    seed_demo.main(["--device-id", "DEMO-ROOM-001", "--days", "1", "--owner", "user-42"])
+    assert len(registered) == 1
+    sub, device = registered[0]
+    assert sub == "user-42"
+    # the shape POST /me/devices accepts, not ingestion's separate registry row
+    assert device["external_id"] == "DEMO-ROOM-001"
+    assert device["kind"] == "portable"
+
+
+def test_a_dry_run_registers_nothing(monkeypatch, offline):
+    registered: list = []
+    monkeypatch.setattr(seed_demo.repo, "upsert_device", lambda sub, d: registered.append((sub, d)))
+    seed_demo.main(["--device-id", "DEMO-ROOM-001", "--days", "1", "--owner", "user-42", "--dry-run"])
+    assert registered == []
+    assert offline["write_reading"] == []

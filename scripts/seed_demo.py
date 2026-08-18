@@ -30,12 +30,25 @@ Rough shape of what a live device needs, at the 5 s sample cadence:
 * forecast:     ``forecast_min_samples`` (6) within the last hour, newest under 2 minutes old
 * baseline:     ``baseline_min_samples`` (50) ≈ 4-5 minutes
 
+Getting the app to actually show it
+-----------------------------------
+Writing the history is not enough on its own. ``useActiveDeviceId()`` in
+``mobile/src/lib/device.ts`` prefers, in order: the portable connected over BLE, then the first
+device registered to the signed-in account, then ``EXPO_PUBLIC_DEFAULT_DEVICE_ID``. The baseline
+and pattern endpoints also require auth. So a demo build that is merely pointed at the demo id
+by environment variable still shows a real device's (empty) history whenever the demo account
+has any device of its own registered.
+
+Pass ``--owner <supabase-user-uuid>`` to register the demo device to the account you will
+present with. It then resolves through the normal path, ahead of the environment variable and
+without depending on it.
+
 Usage
 -----
-    python scripts/seed_demo.py --device-id DEMO-ROOM-001 --days 14
     python scripts/seed_demo.py --device-id DEMO-ROOM-001 --days 14 --dry-run
+    python scripts/seed_demo.py --device-id DEMO-ROOM-001 --days 14 --owner 0c8f...e21
 
-Reads the same INFLUXDB_* settings as the ingestion service.
+Reads the same INFLUXDB_* / SUPABASE_* settings as the services.
 """
 from __future__ import annotations
 
@@ -50,6 +63,7 @@ from pathlib import Path
 # on sys.path, the repo root is not, so the packages it needs would otherwise be unimportable.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from core_api.app import repo  # noqa: E402
 from ingestion.app import writers  # noqa: E402 — must follow the sys.path bootstrap above
 from ingestion.app.validate import validate  # noqa: E402
 from intelligence.models import Reading  # noqa: E402
@@ -112,6 +126,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--device-id", required=True, help=f"must start with {DEMO_PREFIX!r}")
     parser.add_argument("--days", type=int, default=14, help="days of history to generate (default 14)")
     parser.add_argument("--seed", type=int, default=1, help="RNG seed, so a re-run reproduces the same series")
+    parser.add_argument(
+        "--owner",
+        help=(
+            "Supabase user id (the JWT 'sub') to register the demo device to. Without it the "
+            "device is not in anyone's device list, and the app will keep resolving whatever "
+            "device the signed-in account already has."
+        ),
+    )
     parser.add_argument("--dry-run", action="store_true", help="report what would be written and exit")
     args = parser.parse_args(argv)
 
@@ -145,8 +167,24 @@ def main(argv: list[str] | None = None) -> int:
         writers.write_reading(reading, validate(reading, now=now), DEMO_SOURCE)
         written += 1
 
-    writers.upsert_device(readings[-1], DEMO_SOURCE)
     print(f"\nwrote {written} points")
+
+    # Deliberately NOT ingestion's writers.upsert_device(): that keeps its own registry row and
+    # is not what /me/devices reads. The app's device list is user-scoped, so registering the
+    # demo device means putting it in the presenting account's own list.
+    if args.owner:
+        repo.upsert_device(
+            args.owner,
+            {"external_id": args.device_id, "kind": "portable", "label": "Demo device"},
+        )
+        print(f"registered {args.device_id} to user {args.owner}")
+    else:
+        print(
+            "\nNo --owner given, so the app will NOT pick this device up on its own: "
+            "useActiveDeviceId() prefers a device registered to the signed-in account over "
+            "EXPO_PUBLIC_DEFAULT_DEVICE_ID. Re-run with --owner <supabase-user-uuid>."
+        )
+
     print(
         "\nBaseline and the history screens will now have data. The forecast and current-risk "
         "cards still will NOT — they require a reading under two minutes old, which only a "

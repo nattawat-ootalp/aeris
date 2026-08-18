@@ -53,22 +53,38 @@ deliberate: generated readings must never land in a real device's series, and it
 possible to separate them afterwards. Pointing it at a real device id is refused, not warned
 about.
 
-## Pointing a demo build at the seeded device
+## Getting the app to show the seeded device
 
-No separate codebase is needed. The app already resolves which device to read via
-`mobile/src/lib/device.ts`, whose build-time override is `EXPO_PUBLIC_DEFAULT_DEVICE_ID`. A demo
-deployment is the same build with that variable set:
+No separate codebase is needed, but the environment variable alone is **not** enough.
+
+`useActiveDeviceId()` in `mobile/src/lib/device.ts` resolves in this order:
+
+1. the portable currently connected over BLE
+2. the first device registered to the signed-in account (`GET /me/devices`)
+3. `EXPO_PUBLIC_DEFAULT_DEVICE_ID`
+4. the top-ranked public station
+
+The override is third. And the baseline and pattern endpoints require auth, so the demo has to
+be signed in — which means step 2 is live and will win over step 3 for any account that has ever
+paired a device. Setting the variable and nothing else gives you a demo showing a real device's
+empty history.
+
+**Register the demo device to the account you will present with**, which makes it resolve at
+step 2 without depending on the variable at all:
 
 ```
-EXPO_PUBLIC_DEFAULT_DEVICE_ID=DEMO-ROOM-001
+python scripts/seed_demo.py --device-id DEMO-ROOM-001 --days 14 --owner <supabase-user-uuid>
 ```
 
-Set it in a second Vercel project pointed at the same repository. Everything else — API base
-URL, Supabase keys — stays as it is in the real project.
+The user id is the `sub` of that account's JWT. Use an account with no other device registered,
+or the ordering (`last_seen` descending) decides which one appears.
 
-Note that a connected portable still takes precedence: `useActiveDeviceId()` prefers the BLE
-device, then a device registered to the account, then this override. So a demo build with a
-device paired shows the real device, which is usually what you want on stage.
+Setting `EXPO_PUBLIC_DEFAULT_DEVICE_ID=DEMO-ROOM-001` in a second Vercel project is still worth
+doing as a backstop for the signed-out case. Everything else — API base URL, Supabase keys —
+stays as it is in the real project.
+
+A connected portable outranks all of this. Pair a real device during the demo and you will see
+the real device, which is usually what you want on stage.
 
 ## During the demo
 

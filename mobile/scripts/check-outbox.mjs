@@ -48,6 +48,9 @@ export default {
 export function rawStore() { return store; }
 `);
 writeFileSync(join(out, 'stub-client.js'), `
+export class ApiError extends Error {
+  constructor(status, message) { super(message); this.name = 'ApiError'; this.status = status; }
+}
 export let calls = [];
 let handler = null;
 export function setHandler(fn) { handler = fn; calls = []; }
@@ -68,7 +71,7 @@ const { createDeviceClock } = await import(pathToFileURL(join(out, 'lib/deviceCl
 const ob = await import(pathToFileURL(outboxPath));
 const client = await import(pathToFileURL(join(out, 'stub-client.js')));
 const storage = await import(pathToFileURL(join(out, 'stub-storage.js')));
-const STORAGE_KEY = 'aeris.outbox.portable.v1';
+const STORAGE_KEY = 'aeris.outbox.portable.v2';
 
 const ok = (readings) => ({ accepted: true, received: readings.length, stored: readings.length, failed: [] });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -199,16 +202,60 @@ await test('outbox: an unreachable backend gets the backlog written to disk', as
   for (let i = 0; i < 3; i++) ob.enqueueReading(sample(i));
   await sleep(3200); // the persist is debounced
   const persisted = JSON.parse(storage.rawStore().get(STORAGE_KEY));
-  assert.equal(persisted.length, 3);
-  assert.deepEqual(persisted.map((r) => r.timestamp), [0, 1, 2].map((i) => sample(i).timestamp));
+  assert.equal(persisted.queue.length, 3);
+  assert.deepEqual(persisted.queue.map((r) => r.timestamp), [0, 1, 2].map((i) => sample(i).timestamp));
 });
 await test('outbox: a backlog left by a previous run is picked up and sent', async () => {
   // exactly what a fresh app launch sees: entries on disk, nothing in memory
-  storage.rawStore().set(STORAGE_KEY, JSON.stringify([sample(0), sample(1)]));
+  storage.rawStore().set(STORAGE_KEY, JSON.stringify({ queue: [sample(0), sample(1)], dropped: 0 }));
   client.setHandler(ok);
   await ob.drainOutbox();
   assert.equal(ob.outboxState().pending, 0);
   assert.deepEqual(client.calls, [[sample(0).timestamp, sample(1).timestamp]]);
+});
+await test('outbox: a bare-array store from the previous format is still read', async () => {
+  storage.rawStore().set('aeris.outbox.portable.v1', JSON.stringify([sample(0), sample(1)]));
+  client.setHandler(ok);
+  await ob.drainOutbox();
+  assert.equal(ob.outboxState().pending, 0);
+  assert.deepEqual(client.calls, [[sample(0).timestamp, sample(1).timestamp]]);
+});
+await test('outbox: a reported loss is still reported after a restart', async () => {
+  // Losing readings and then forgetting you lost them is barely better than never saying so.
+  client.setHandler(() => { throw new Error('offline'); });
+  for (let i = 0; i < ob.MAX_ENTRIES + 3; i++) ob.enqueueReading(sample(i));
+  await sleep(3200); // the persist is debounced
+  const persisted = JSON.parse(storage.rawStore().get(STORAGE_KEY));
+  assert.equal(persisted.dropped, 3, 'the drop count must reach disk, not just memory');
+  // ...and a fresh launch reads it back
+  storage.rawStore().set(STORAGE_KEY, JSON.stringify({ queue: [], dropped: 7 }));
+  await ob.__resetOutboxForTests();
+  storage.rawStore().set(STORAGE_KEY, JSON.stringify({ queue: [], dropped: 7 }));
+  await ob.loadOutbox();
+  assert.equal(ob.outboxState().dropped, 7);
+});
+await test('outbox: trimming an over-full store on load is counted, not silent', async () => {
+  const stored = Array.from({ length: ob.MAX_ENTRIES + 5 }, (_, i) => sample(i));
+  storage.rawStore().set(STORAGE_KEY, JSON.stringify({ queue: stored, dropped: 0 }));
+  await ob.loadOutbox();
+  assert.equal(ob.outboxState().pending, ob.MAX_ENTRIES);
+  assert.equal(ob.outboxState().dropped, 5);
+});
+await test('outbox: a permanently-rejected REQUEST is not retried forever', async () => {
+  // A 422 — what a batch the server considers too large returns — fails identically every
+  // time, and retrying it means nothing behind it ever drains.
+  let attempts = 0;
+  client.setHandler(() => { attempts++; throw new ob.__ApiErrorForTests(422, 'too large'); });
+  ob.enqueueReading(sample(0));
+  await sleep(2500); // longer than one retry delay
+  assert.equal(attempts, 1, 'a 422 must not be retried');
+});
+await test('outbox: a server error IS retried', async () => {
+  let attempts = 0;
+  client.setHandler(() => { attempts++; throw new ob.__ApiErrorForTests(503, 'unavailable'); });
+  ob.enqueueReading(sample(0));
+  await sleep(2500);
+  assert.ok(attempts > 1, 'a 503 should have been retried, saw ' + attempts + ' attempt(s)');
 });
 await test('outbox: a permanently-rejected entry is dropped, not retried forever', async () => {
   client.setHandler((r) => ({ accepted: true, received: r.length, stored: r.length - 1,

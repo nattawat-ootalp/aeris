@@ -18,9 +18,12 @@
  * prevent, so an unavoidable one is reported rather than hidden.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ingestPortableBatch, type PortableIngestPayload } from '../api/client';
+import { ApiError, ingestPortableBatch, type PortableIngestPayload } from '../api/client';
 
-const STORAGE_KEY = 'aeris.outbox.portable.v1';
+const STORAGE_KEY = 'aeris.outbox.portable.v2';
+/** The v1 store held a bare array and no drop count, so a restart reset "readings lost" to zero
+ *  after a real loss. Read once on upgrade and then removed. */
+const LEGACY_STORAGE_KEY = 'aeris.outbox.portable.v1';
 
 /** ~2.8 hours of samples at the firmware's 5 s cadence, roughly 400 KB of JSON. Past this the
  *  oldest entries are dropped: an unbounded queue would grow until the write itself failed,
@@ -81,9 +84,12 @@ async function persistNow(): Promise<void> {
     clearTimeout(persistTimer);
     persistTimer = null;
   }
+  // The drop count is stored WITH the queue. Keeping it in memory only meant "readings lost"
+  // silently returned to zero on the next launch — reporting a hole in the record and then
+  // forgetting it is barely better than never reporting it.
   // A failed write costs us the on-disk copy, not the in-memory queue — this run keeps
   // working and only a kill-before-next-write loses the backlog.
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(queue)).catch(() => {});
+  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ queue, dropped })).catch(() => {});
 }
 
 function persistSoon(): void {
@@ -100,15 +106,33 @@ export async function loadOutbox(): Promise<void> {
   if (loading) return loading;
   loading = (async () => {
     try {
+      let stored: PortableIngestPayload[] = [];
       const raw = await AsyncStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed: unknown = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          // Anything already in memory was captured during this run and is newer than what was
-          // on disk, so the stored backlog goes in front of it.
-          queue = [...(parsed as PortableIngestPayload[]), ...queue].slice(-MAX_ENTRIES);
+        if (parsed && typeof parsed === 'object' && Array.isArray((parsed as { queue?: unknown }).queue)) {
+          const state = parsed as { queue: PortableIngestPayload[]; dropped?: number };
+          stored = state.queue;
+          dropped += typeof state.dropped === 'number' ? state.dropped : 0;
+        }
+      } else {
+        // One-time upgrade from the bare-array format.
+        const legacy = await AsyncStorage.getItem(LEGACY_STORAGE_KEY);
+        if (legacy) {
+          const parsed: unknown = JSON.parse(legacy);
+          if (Array.isArray(parsed)) stored = parsed as PortableIngestPayload[];
+          await AsyncStorage.removeItem(LEGACY_STORAGE_KEY).catch(() => {});
         }
       }
+      // Anything already in memory was captured during this run and is newer than what was
+      // on disk, so the stored backlog goes in front of it.
+      const merged = [...stored, ...queue];
+      if (merged.length > MAX_ENTRIES) {
+        // Counted, not silent: this trims the same way the cap does during a run, and a
+        // reading lost here is just as absent from the record.
+        dropped += merged.length - MAX_ENTRIES;
+      }
+      queue = merged.slice(-MAX_ENTRIES);
     } catch {
       // A corrupt or unreadable store is treated as an empty one. Refusing to start because
       // of it would mean discarding every future reading too.
@@ -118,6 +142,15 @@ export async function loadOutbox(): Promise<void> {
     notify();
   })();
   return loading;
+}
+
+/** 4xx means this request will not succeed as sent, so repeating it is pointless — except for
+ *  408 (timeout) and 429 (rate limited), which explicitly invite a retry. Anything else, a 5xx
+ *  or a network error included, may well work in a moment. */
+function isRetryableTransportError(e: unknown): boolean {
+  if (!(e instanceof ApiError)) return true; // offline, DNS, timeout — all worth retrying
+  if (e.status === 408 || e.status === 429) return true;
+  return e.status < 400 || e.status >= 500;
 }
 
 function scheduleRetry(): void {
@@ -180,14 +213,21 @@ export async function drainOutbox(): Promise<void> {
       }
       retryDelayMs = RETRY_BASE_MS;
     }
-  } catch {
-    // Unreachable, timed out, or a non-2xx: the entries are untouched and stay queued.
-    scheduleRetry();
+  } catch (e) {
+    // The entries are untouched and stay queued either way. But retrying is only right when the
+    // failure could go away: a 422 from sending a batch the server considers too large will
+    // fail identically forever, and retrying it every minute means nothing behind it ever
+    // drains. Same distinction the server draws per entry, applied to the request itself.
+    if (isRetryableTransportError(e)) scheduleRetry();
   } finally {
     draining = false;
     notify();
   }
 }
+
+/** Test seam — the exact ApiError class this module compares against, so a check can raise one
+ *  the retry logic will actually recognise. */
+export { ApiError as __ApiErrorForTests };
 
 /** Test seam — drop all state so each case starts clean. */
 export async function __resetOutboxForTests(): Promise<void> {
@@ -203,4 +243,5 @@ export async function __resetOutboxForTests(): Promise<void> {
   retryDelayMs = RETRY_BASE_MS;
   listeners.clear();
   await AsyncStorage.removeItem(STORAGE_KEY).catch(() => {});
+  await AsyncStorage.removeItem(LEGACY_STORAGE_KEY).catch(() => {});
 }
