@@ -7,12 +7,21 @@ import { usePortable } from '../../state/portable';
 import { colors, space, type } from '../../theme';
 
 export function SensorHealthScreen() {
-  const { state, telemetry, status, lastSeenAt } = usePortable();
+  const { state, telemetry, status, lastSeenAt, outbox } = usePortable();
   const connected = state === 'connected';
   const lastSyncSec = lastSeenAt != null ? (Date.now() - lastSeenAt) / 1000 : null;
   // The VOC chip reports its own health; `sensor_status` covers the PM sensor only, so the
   // two are never folded into one row (docs/ble-contract.md).
   const sgp30 = status?.sgp30;
+
+  // Two buffers sit between a measurement and the record: the device holds readings taken while
+  // no phone was connected, and the phone holds readings the backend has not accepted yet.
+  // Both are normal and clear on their own, so they read as reassurance rather than as faults.
+  const heldOnDevice = status?.buffered;
+  // Readings neither buffer could keep. This is the one number here that means the record has a
+  // hole in it, so it is always shown — including when it is zero, which is the useful case.
+  const lost = (status?.dropped ?? 0) + outbox.dropped;
+  const readings = (n: number) => `${n} reading${n === 1 ? '' : 's'}`;
 
   const rows: { label: string; value: string; ok: boolean }[] = [
     { label: 'Connection', value: connected ? 'Connected' : 'Not connected', ok: connected },
@@ -39,6 +48,25 @@ export function SensorHealthScreen() {
     },
     // Firmware comes from the device-status characteristic; unknown until the device answers.
     { label: 'Firmware', value: status?.fw ? `v${status.fw}` : 'No Data', ok: status?.fw != null },
+    {
+      label: 'Held on device',
+      value: heldOnDevice == null ? 'No Data' : heldOnDevice === 0 ? 'Nothing waiting' : `${readings(heldOnDevice)} to transfer`,
+      ok: heldOnDevice != null,
+    },
+    {
+      label: 'Waiting to upload',
+      value: outbox.pending === 0
+        ? 'Nothing waiting'
+        : outbox.syncing
+          ? `Uploading ${readings(outbox.pending)}`
+          : `${readings(outbox.pending)} queued`,
+      ok: true,
+    },
+    {
+      label: 'Readings lost',
+      value: lost === 0 ? 'None' : readings(lost),
+      ok: lost === 0,
+    },
   ];
 
   return (
@@ -57,6 +85,11 @@ export function SensorHealthScreen() {
       <Text style={styles.note}>
         The VOC sensor reports no data for about 15 seconds after connecting while it warms up.
         PM sensor status above does not reflect VOC sensor health.
+      </Text>
+      <Text style={styles.note}>
+        Readings taken while the device is out of range, or while the phone is offline, are kept
+        and sent later — they are not lost. &ldquo;Readings lost&rdquo; counts only the ones that
+        waited longer than either buffer could hold, which leaves a gap in your history.
       </Text>
     </Screen>
   );

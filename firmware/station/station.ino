@@ -69,6 +69,10 @@ void loop() {
   // ===== 1. MQTT keep-alive & reconnect =====
   mqttLoop();
 
+  // Hand over anything measured while the broker was unreachable. Rate-limited inside so it
+  // shares the loop with mqttLoop()'s keepalive rather than starving it.
+  mqttServiceBuffer();
+
   // ===== 2. อ่านค่าเซนเซอร์ (ทุก 5 วินาที) =====
   if (now - lastSensorRead >= SENSOR_READ_INTERVAL_MS) {
     lastSensorRead = now;
@@ -99,11 +103,9 @@ void loop() {
   if (now - lastTelemetryTime >= TELEMETRY_INTERVAL_MS) {
     lastTelemetryTime = now;
 
-    if (isMQTTConnected()) {
-      publishTelemetry(latestData, latestResult.aqi_class, latestResult.anomaly_detected);
-    } else {
-      Serial.println("[System] MQTT not connected — skipping telemetry");
-    }
+    // Called whether or not the broker is reachable: publishTelemetry() buffers the sample
+    // when it cannot send it, so an outage delays delivery instead of erasing the reading.
+    publishTelemetry(latestData, latestResult.aqi_class, latestResult.anomaly_detected);
 
     // ===== 4. ตรวจสอบเงื่อนไข Alert =====
     // ส่ง alert เมื่อค่าเกิน threshold ต่อเนื่อง 2 รอบ (60 วินาที)

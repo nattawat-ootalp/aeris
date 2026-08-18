@@ -1,5 +1,6 @@
 // reused from AirSentinel
 #include "mqtt.h"
+#include "buffer.h"
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <PubSubClient.h>
@@ -23,6 +24,12 @@ static unsigned long lastWiFiAttempt = 0;
 #define WIFI_RETRY_INTERVAL_MS 15000
 // NTP sync ต้องทำหลัง WiFi ติดเสมอ — timestamp ที่ยังไม่ sync จะเป็นปี 1970
 static bool ntpSynced = false;
+
+// Buffered telemetry published per mqttServiceBuffer() call. station.ino's loop runs ~10x/s,
+// so roughly 20 publishes/s and a full six-hour ring clears in about 36 s. Draining faster
+// would starve PubSubClient's keepalive: mqttClient.loop() only runs once per loop pass, and a
+// broker that stops seeing PINGREQ disconnects the node mid-backlog.
+#define REPLAY_PER_PASS 2
 
 static void reconnectMQTT();
 static void syncNTP();
@@ -160,6 +167,21 @@ static String isoTimestamp() {
 
 
 // ============================================================
+//  isoTimestampFrom() — format a stored epoch, not the present moment
+//  A replayed sample must carry the time it was MEASURED. Stamping the moment of delivery
+//  would collapse hours of history onto the instant the uplink came back.
+// ============================================================
+static String isoTimestampFrom(uint32_t epochSec) {
+  time_t t = (time_t)epochSec;
+  struct tm timeinfo;
+  localtime_r(&t, &timeinfo);
+  char buf[32];
+  strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S+07:00", &timeinfo);
+  return String(buf);
+}
+
+
+// ============================================================
 //  initMQTT() — ตั้งค่าและเชื่อมต่อ HiveMQ Cloud
 // ============================================================
 void initMQTT() {
@@ -270,9 +292,29 @@ bool isMQTTConnected() {
 // ============================================================
 //  publishTelemetry() — ส่งข้อมูลเซนเซอร์ทุก 30 วินาที
 // ============================================================
-void publishTelemetry(const SensorData& data, const char* aqiClass, bool anomalyDetected) {
-  if (!mqttClient.connected()) return;
+// Snapshot everything the telemetry frame needs, so it can be sent now or held and sent later
+// without any of it being re-read from the present.
+static StationSample captureSample(const SensorData& data, const char* aqiClass, bool anomalyDetected) {
+  StationSample s = {};
+  s.ts = (uint32_t)time(nullptr);
+  s.uptime_sec = (uint32_t)(millis() / 1000);
+  s.pm2_5 = data.pm2_5;
+  s.pm10 = data.pm10;
+  s.co2 = data.co2;
+  s.tvoc = data.tvoc;
+  s.temperature = data.temperature;
+  s.humidity = data.humidity;
+  s.rssi = (int8_t)constrain(WiFi.RSSI(), -128, 127);
+  s.aqi = aqiIndex(aqiClass);
+  s.anomaly = anomalyDetected ? 1 : 0;
+  return s;
+}
 
+// Both the live frame and a replayed one are built here, so a buffered sample goes on the wire
+// in exactly the shape it would have had at the time. Nothing marks it as replayed: the
+// timestamp it carries is the whole difference, and the backend stores a reading at the time it
+// carries (ingestion/app/writers.py).
+static void buildTelemetryJson(const StationSample& s, char* out, size_t outSize) {
   JsonDocument doc;
 
   doc["schema_version"] = "1.2";
@@ -280,7 +322,7 @@ void publishTelemetry(const SensorData& data, const char* aqiClass, bool anomaly
   doc["node_id"] = NODE_ID;
 
   // Timestamp (ISO 8601) จาก NTP — sync ใน initWiFi()
-  doc["timestamp"] = isoTimestamp();
+  doc["timestamp"] = isoTimestampFrom(s.ts);
 
   // Location
   JsonObject loc = doc["location"].to<JsonObject>();
@@ -293,58 +335,99 @@ void publishTelemetry(const SensorData& data, const char* aqiClass, bool anomaly
   JsonObject sensors = doc["sensors"].to<JsonObject>();
 
   JsonObject pm25 = sensors["pm2_5"].to<JsonObject>();
-  pm25["value"] = data.pm2_5;
+  pm25["value"] = s.pm2_5;
   pm25["unit"] = "ug/m3";
-  pm25["status"] = getSensorStatus("pm2_5", data.pm2_5);
+  pm25["status"] = getSensorStatus("pm2_5", s.pm2_5);
 
   JsonObject pm10 = sensors["pm10"].to<JsonObject>();
-  pm10["value"] = data.pm10;
+  pm10["value"] = s.pm10;
   pm10["unit"] = "ug/m3";
-  pm10["status"] = getSensorStatus("pm10", data.pm10);
+  pm10["status"] = getSensorStatus("pm10", s.pm10);
 
   JsonObject co2 = sensors["co2"].to<JsonObject>();
-  co2["value"] = data.co2;
+  co2["value"] = s.co2;
   co2["unit"] = "ppm";
-  co2["status"] = getSensorStatus("co2", data.co2);
+  co2["status"] = getSensorStatus("co2", s.co2);
 
   JsonObject tvoc = sensors["tvoc"].to<JsonObject>();
-  tvoc["value"] = data.tvoc;
+  tvoc["value"] = s.tvoc;
   tvoc["unit"] = "ppb";
-  tvoc["status"] = getSensorStatus("tvoc", data.tvoc);
+  tvoc["status"] = getSensorStatus("tvoc", s.tvoc);
 
   JsonObject temp = sensors["temp"].to<JsonObject>();
-  temp["value"] = data.temperature;
+  temp["value"] = s.temperature;
   temp["unit"] = "C";
-  temp["status"] = getSensorStatus("temp", data.temperature);
+  temp["status"] = getSensorStatus("temp", s.temperature);
 
   JsonObject hum = sensors["hum"].to<JsonObject>();
-  hum["value"] = data.humidity;
+  hum["value"] = s.humidity;
   hum["unit"] = "%RH";
-  hum["status"] = getSensorStatus("hum", data.humidity);
+  hum["status"] = getSensorStatus("hum", s.humidity);
 
   // Edge Inference
   JsonObject edge = doc["edge_inference"].to<JsonObject>();
-  edge["aqi_class"] = aqiClass;
-  edge["anomaly_detected"] = anomalyDetected;
+  edge["aqi_class"] = AQI_CLASSES[s.aqi];
+  edge["anomaly_detected"] = s.anomaly != 0;
   edge["model_version"] = "1.0.0-mock";
 
   // Device Health
   JsonObject health = doc["device_health"].to<JsonObject>();
   health["battery_pct"] = 100;  // ESP32-S3 ใช้ USB power
-  health["rssi"] = WiFi.RSSI();
-  health["uptime_sec"] = (int)(millis() / 1000);
+  health["rssi"] = s.rssi;
+  health["uptime_sec"] = (int)s.uptime_sec;
   health["fw_version"] = FW_VERSION;
 
-  // Serialize and publish
-  char buffer[1024];
-  serializeJson(doc, buffer, sizeof(buffer));
+  serializeJson(doc, out, outSize);
+}
 
-  bool ok = mqttClient.publish(TOPIC_TELEMETRY, buffer);
-  if (ok) {
+void publishTelemetry(const SensorData& data, const char* aqiClass, bool anomalyDetected) {
+  StationSample sample = captureSample(data, aqiClass, anomalyDetected);
+
+  // A reading taken before NTP answered has no time it can be placed at. Buffering it would
+  // only queue something the backend rejects as CLOCK_UNSYNCED, and stamping it with the time
+  // the uplink returned would invent a freshness it never had.
+  if (!ntpSynced) {
+    Serial.println("[MQTT] Clock not synced — telemetry cannot be timestamped, not buffered");
+    return;
+  }
+
+  // A measurement nobody received is a hole in the record, not a non-event. Hold it until the
+  // broker is reachable — the node is the only place it exists.
+  if (!mqttClient.connected()) {
+    bufferPush(sample);
+    Serial.printf("[MQTT] Offline — buffered (%u held, %u lost)\n",
+                  (unsigned)bufferCount(), (unsigned)bufferDropped());
+    return;
+  }
+
+  char buffer[1024];
+  buildTelemetryJson(sample, buffer, sizeof(buffer));
+  if (mqttClient.publish(TOPIC_TELEMETRY, buffer)) {
     Serial.println("[MQTT] Telemetry published");
   } else {
-    Serial.println("[MQTT] Telemetry publish FAILED");
+    // Connected but the publish did not go out. Same outcome for the data, so same treatment.
+    Serial.println("[MQTT] Telemetry publish FAILED — buffering the sample");
+    bufferPush(sample);
   }
+}
+
+// ============================================================
+//  mqttServiceBuffer() — hand over what the broker was not there to receive
+// ============================================================
+void mqttServiceBuffer() {
+  if (!mqttClient.connected() || bufferCount() == 0) return;
+
+  for (int i = 0; i < REPLAY_PER_PASS; i++) {
+    StationSample sample;
+    if (!bufferPeek(sample)) return;
+    char buffer[1024];
+    buildTelemetryJson(sample, buffer, sizeof(buffer));
+    // Drop it from the ring only once the broker has taken it: a failed publish must leave the
+    // sample queued rather than consume it.
+    if (!mqttClient.publish(TOPIC_TELEMETRY, buffer)) return;
+    bufferPop();
+  }
+  if (bufferCount() == 0) Serial.println("[MQTT] Buffered telemetry fully replayed");
 }
 
 
@@ -387,6 +470,11 @@ void publishHealth() {
   doc["rssi"] = WiFi.RSSI();
   doc["uptime_sec"] = (int)(millis() / 1000);
   doc["fw_version"] = FW_VERSION;
+  // Telemetry held for a broker that was unreachable, and readings the ring had to evict to
+  // keep accepting new ones. `dropped` is a hole in the record, so it is stated rather than
+  // left to be inferred from a gap that looks the same as the node having been switched off.
+  doc["buffered"] = (uint32_t)bufferCount();
+  doc["dropped"] = bufferDropped();
 
   char buffer[256];
   serializeJson(doc, buffer, sizeof(buffer));

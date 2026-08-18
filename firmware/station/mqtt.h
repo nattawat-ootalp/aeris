@@ -14,7 +14,7 @@
 #endif
 
 // ===== Firmware Version =====
-#define FW_VERSION    "1.4.2"
+#define FW_VERSION    "1.5.0"
 
 // ===== MQTT Topic Patterns =====
 // {org}/airsentinel/{node_id}/{sub-topic}
@@ -32,7 +32,14 @@ void mqttLoop();
 bool isMQTTConnected();
 
 // ส่งข้อมูล Telemetry (ทุก 30 วินาที)
+// Buffers the sample instead of dropping it when the broker is unreachable or the publish
+// fails, so call it every telemetry cycle regardless of connection state.
 void publishTelemetry(const SensorData& data, const char* aqiClass, bool anomalyDetected);
+
+// Publish buffered telemetry to a reconnected broker, a few per call. Call every loop; it is a
+// no-op while disconnected or once the buffer is empty. Replayed frames carry the timestamp
+// they were measured at, which is the only thing distinguishing them from a live one.
+void mqttServiceBuffer();
 
 // ส่ง Alert ทันทีเมื่อค่าเกิน threshold
 void publishAlert(const char* sensor, float value, float threshold,
