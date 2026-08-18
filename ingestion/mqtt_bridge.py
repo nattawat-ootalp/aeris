@@ -58,7 +58,7 @@ def _endpoint_for(topic: str) -> str | None:
     return None  # /health is device metadata, not a reading — nothing to ingest
 
 
-def start_status_server(bridge: "Bridge", port: int) -> None:
+def start_status_server(bridge: Bridge, port: int) -> None:
     """Serve a small JSON status page so this can be a Render free *web* service.
 
     Render's free plan has no background worker, and it only keeps a service running if
