@@ -42,11 +42,6 @@
           "bluetoothAlwaysPermission": "Allow NextAir to connect to your NextAir Portable device over Bluetooth."
         }
       ]
-    ],
-    "extra": {
-      "eas": {
-        "projectId": ""
-      }
-    }
+    ]
   }
 }
