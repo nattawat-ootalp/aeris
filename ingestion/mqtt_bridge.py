@@ -35,6 +35,7 @@ import threading
 import httpx
 import paho.mqtt.client as mqtt
 
+import observability
 from ingestion.app.config import settings
 from ingestion.app.hmac_util import sign
 
@@ -74,6 +75,7 @@ def start_status_server(bridge: Bridge, port: int) -> None:
                 "org": bridge.org,
                 "forwarded": bridge.forwarded,
                 "failed": bridge.failed,
+                "observability": observability.health(),
             }).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -106,6 +108,7 @@ class Bridge:
         if reason_code != 0:
             log.error("MQTT connect refused: %s", reason_code)
             return
+        observability.metric("bridge.mqtt_connected", 1)
         for t in _topics(self.org):
             client.subscribe(t, qos=1)
             log.info("subscribed %s", t)
@@ -113,11 +116,15 @@ class Bridge:
     def on_disconnect(self, client, userdata, flags, reason_code, properties=None):
         # paho's reconnect_delay_set below handles the retry; just make the gap visible.
         log.warning("MQTT disconnected (%s) — retrying", reason_code)
+        observability.metric("bridge.mqtt_disconnected", 1, {"reason": str(reason_code)})
 
     def on_message(self, client, userdata, msg):
         endpoint = _endpoint_for(msg.topic)
         if endpoint is None:
             return
+        # Counted before the forward: "the broker delivered nothing" and "the forward failed"
+        # are different faults with different fixes, and only separate counters tell them apart.
+        observability.metric("bridge.received", 1, {"topic": msg.topic.rsplit("/", 1)[-1]})
         self.forward(endpoint, msg.payload, msg.topic)
 
     # ── HTTP forward ──
@@ -132,17 +139,23 @@ class Bridge:
             # replay would land under a fresh timestamp and look like current air.
             log.error("%s POST failed (%s): %s", endpoint, topic, e)
             self.failed += 1
+            observability.metric("bridge.forward_failed", 1, {"reason": "transport"})
             return None
         if r.status_code != 200:
             log.error("%s -> HTTP %s: %s", endpoint, r.status_code, r.text[:200])
             self.failed += 1
+            observability.metric("bridge.forward_failed", 1,
+                                 {"reason": "http", "status": r.status_code})
             return None
         body = r.json()
         if not body.get("accepted"):
             log.error("%s rejected: %s", endpoint, body)
             self.failed += 1
+            observability.metric("bridge.forward_failed", 1, {"reason": "rejected"})
         else:
             self.forwarded += 1
+            observability.metric("bridge.forwarded", 1,
+                                 {"device": body.get("device_id") or "unknown"})
             log.info(
                 "ingested %s pm25_valid=%s usable=%s",
                 body.get("device_id") or body.get("node_id"),
@@ -204,6 +217,7 @@ def main(argv: list[str] | None = None) -> int:
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    observability.init(service="station-bridge")
     return Bridge(args.api_base, args.org).run()
 
 

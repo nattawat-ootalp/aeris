@@ -11,7 +11,13 @@ client = TestClient(app)
 def test_health_ok():
     r = client.get("/health")
     assert r.status_code == 200
-    assert r.json() == {"status": "ok", "service": "aeris-core-api"}
+    body = r.json()
+    assert body["status"] == "ok"
+    assert body["service"] == "aeris-core-api"
+    # Asserted by key rather than by whole-dict equality: /health also reports the state of
+    # the Grafana shipper, and pinning the exact shape would make every future addition to
+    # this endpoint a test failure rather than a decision.
+    assert "observability" in body
 
 
 def test_openapi_available():

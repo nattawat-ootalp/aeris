@@ -18,6 +18,8 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Request
 
+import observability
+
 from . import adapters, writers
 from .hmac_util import verify_signature
 from .schemas import AlertPayload, PortableTelemetry, PortableTelemetryBatch, StationTelemetry
@@ -41,6 +43,11 @@ def _clock_is_plausible(ts: datetime, now: datetime | None = None) -> bool:
 
 
 def _ingest_reading(reading, source: str, *, register_device: bool = True) -> dict:
+    # Every outcome below is counted. The failures this system has actually had were all
+    # silent — a station publishing into nothing, readings refused one at a time — and a
+    # rejection that nobody can see is indistinguishable from a device that went quiet.
+    tags = {"source": source, "device": reading.device_id}
+
     if not _clock_is_plausible(reading.timestamp):
         log.warning(
             "%s reading from %s rejected: device clock unsynced (ts=%s)",
@@ -48,6 +55,7 @@ def _ingest_reading(reading, source: str, *, register_device: bool = True) -> di
             reading.device_id,
             reading.timestamp.isoformat(),
         )
+        observability.metric("ingest.rejected", 1, {**tags, "reason": "clock_unsynced"})
         return {
             "accepted": False,
             "device_id": reading.device_id,
@@ -62,6 +70,7 @@ def _ingest_reading(reading, source: str, *, register_device: bool = True) -> di
         writers.write_reading(reading, quality, source)
     except Exception as e:  # noqa: BLE001 — surface the cause; a 500 tells the sender nothing
         log.error("store failed for %s (%s): %s", reading.device_id, source, e)
+        observability.metric("ingest.rejected", 1, {**tags, "reason": "store_failed"})
         return {
             "accepted": False,
             "device_id": reading.device_id,
@@ -71,6 +80,17 @@ def _ingest_reading(reading, source: str, *, register_device: bool = True) -> di
         }
     if register_device:
         writers.upsert_device(reading, source)
+
+    observability.metric("ingest.accepted", 1, tags)
+    observability.metric("ingest.pm25_valid", 1 if quality.pm25_valid else 0, tags)
+    if quality.freshness_sec is not None:
+        # The single most useful number here: how old the reading was when it arrived. A
+        # station that stops publishing shows as this climbing, which is the alert that would
+        # have caught every outage this system has had.
+        observability.metric("ingest.reading_age_sec", quality.freshness_sec, tags)
+    if reading.pm25 is not None and quality.pm25_valid:
+        observability.metric("reading.pm25", reading.pm25, tags)
+
     return {
         "accepted": True,
         "device_id": reading.device_id,

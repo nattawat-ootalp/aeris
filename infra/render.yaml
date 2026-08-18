@@ -57,6 +57,21 @@ services:
         sync: false
       - key: CORS_ORIGINS
         sync: false
+      # ── Monitoring / logging (Grafana Cloud) — optional; unset means local logging only ──
+      # Pushed by the process over HTTPS rather than scraped: the free plan has one container
+      # per service and no room for a Grafana Alloy sidecar.
+      - key: GRAFANA_LOKI_URL
+        sync: false
+      - key: GRAFANA_LOKI_USER
+        sync: false
+      - key: GRAFANA_GRAPHITE_URL
+        sync: false
+      - key: GRAFANA_GRAPHITE_USER
+        sync: false
+      - key: GRAFANA_API_TOKEN
+        sync: false
+      - key: GRAFANA_ENVIRONMENT
+        value: core-api
 
   # ── Station telemetry bridge: HiveMQ MQTT -> POST /webhook/telemetry ──
   # Free-tier shape borrowed from AirSentinel (backend/mqtt_bridge.py + its render.yaml),
@@ -98,3 +113,18 @@ services:
       # Must be byte-identical to the API service's WEBHOOK_SECRET, or every forward 401s.
       - key: WEBHOOK_SECRET
         sync: false
+      # ── Monitoring / logging (Grafana Cloud) — optional; unset means local logging only ──
+      # Pushed by the process over HTTPS rather than scraped: the free plan has one container
+      # per service and no room for a Grafana Alloy sidecar.
+      - key: GRAFANA_LOKI_URL
+        sync: false
+      - key: GRAFANA_LOKI_USER
+        sync: false
+      - key: GRAFANA_GRAPHITE_URL
+        sync: false
+      - key: GRAFANA_GRAPHITE_USER
+        sync: false
+      - key: GRAFANA_API_TOKEN
+        sync: false
+      - key: GRAFANA_ENVIRONMENT
+        value: station-bridge
