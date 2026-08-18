@@ -4,6 +4,11 @@ Given a destination and the set of AirSentinel nodes (area context), pick the ne
 node, check distance + freshness + sensor health, and return a caution with reasons. Hard rule
 (TDD §6): an offline/stale node must be reported as ``unavailable``/``stale`` — its old value is
 never presented as the current condition.
+
+The node's other sensors (PM10, CO2, TVOC, temperature, humidity) travel with an ``ok`` answer
+so the destination screen can show the same frame the rest of the app shows. They are context
+only. The verdict stays PM2.5-only, because that is what §5.2's thresholds are calibrated
+against; a reading shown next to a colour must not be mistaken for a reading that produced it.
 """
 from __future__ import annotations
 
@@ -36,6 +41,14 @@ class NodeContext:
     sensor_healthy: bool = True
     trend: str | None = None       # "rising" | "falling" | "steady" | None
     name: str = ""
+    # Everything else the node reported in the same frame. Context for the reader, never an
+    # input to the verdict: `classify_env` reads PM2.5 alone, and widening what colours the
+    # card would change the meaning of every threshold in §5.2.
+    pm10: float | None = None
+    co2: float | None = None
+    tvoc: float | None = None
+    temperature: float | None = None
+    humidity: float | None = None
 
 
 @dataclass
@@ -49,6 +62,14 @@ class DestinationAssessment:
     freshness_sec: float | None = None
     pm25: float | None = None
     trend: str | None = None
+    # Reported only alongside an "ok" verdict. A stale or unavailable answer carries no
+    # readings at all — publishing the rest of a frame the freshness rule just rejected would
+    # reintroduce, field by field, the stale-as-current display that rule exists to prevent.
+    pm10: float | None = None
+    co2: float | None = None
+    tvoc: float | None = None
+    temperature: float | None = None
+    humidity: float | None = None
 
 
 def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -102,4 +123,6 @@ def assess_destination(
         status="ok", decision=decision, watch_label=_WATCH[decision],
         reason_codes=reasons, node_code=node.node_code, distance_km=distance,
         freshness_sec=freshness, pm25=node.pm25, trend=node.trend,
+        pm10=node.pm10, co2=node.co2, tvoc=node.tvoc,
+        temperature=node.temperature, humidity=node.humidity,
     )

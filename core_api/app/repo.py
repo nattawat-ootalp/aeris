@@ -41,7 +41,12 @@ def get_baseline_values(device_id: str, days: int = 14) -> list[float]:
 
 
 def get_node_contexts(now: datetime) -> list[NodeContext]:
-    """AirSentinel nodes (Supabase) enriched with their latest InfluxDB reading."""
+    """AirSentinel nodes (Supabase) enriched with their latest InfluxDB reading.
+
+    lat/lon come from Supabase, not from the telemetry payload: the node's position is
+    registry metadata, and a node that is physically moved is corrected there once rather
+    than in every reading it has ever sent.
+    """
     nodes = supa.sb_get("nodes", {"select": "node_code,name,lat,lon,status,last_seen_at"})
     out: list[NodeContext] = []
     for n in nodes:
@@ -63,6 +68,14 @@ def get_node_contexts(now: datetime) -> list[NodeContext]:
                 last_seen=last_seen,
                 pm25=pm25,
                 sensor_healthy=str(n.get("status", "")).lower() in ("active", "online", ""),
+                # The same frame `pm25` came from. Read with .get so a node missing a sensor
+                # stays None rather than absent — the screen renders "No Data" for one field
+                # instead of the caller having to tell the two apart.
+                pm10=latest.get("pm10") if latest else None,
+                co2=latest.get("co2") if latest else None,
+                tvoc=latest.get("tvoc") if latest else None,
+                temperature=latest.get("temperature") if latest else None,
+                humidity=latest.get("humidity") if latest else None,
             )
         )
     return out

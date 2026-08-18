@@ -3,8 +3,9 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { assessDestination } from '../../api/client';
-import { LoadingState, SecondaryButton } from '../../components/ui';
+import { InfoCard, LoadingState, MetaRow, SecondaryButton } from '../../components/ui';
 import { HeroStatusCard } from '../../components/WatchStatus';
+import { co2Label, tvocLabel, valueLabel } from '../../lib/format';
 import { useMeasureStyle } from '../../lib/responsive';
 import { colors, space, type } from '../../theme';
 import type { ExploreStackParamList } from '../../navigation/types';
@@ -39,6 +40,19 @@ export function DestinationAssessmentScreen({ route, navigation }: Props) {
               <Text key={c} style={styles.reason}>• {c.replaceAll('_', ' ').toLowerCase()}</Text>
             ))}
           </View>
+          {state.data.status === 'ok' ? (
+            <InfoCard title="Other readings at this station">
+              <MetaRow label="PM10" value={valueLabel(state.data.pm10, 'µg/m³')} />
+              <MetaRow label="CO2" value={co2Label(state.data.co2)} />
+              <MetaRow label="TVOC" value={tvocLabel(state.data.tvoc ?? undefined)} />
+              <MetaRow label="Temperature" value={valueLabel(state.data.temperature, '°C', 1)} />
+              <MetaRow label="Humidity" value={valueLabel(state.data.humidity, '%', 0)} />
+              <Text style={styles.note}>
+                Shown for context. The status above is decided by PM2.5 alone — these readings do
+                not change it.
+              </Text>
+            </InfoCard>
+          ) : null}
         </>
       )}
       <SecondaryButton label="Compare locations" onPress={() => navigation.navigate('CompareLocations')} />
@@ -58,4 +72,5 @@ const styles = StyleSheet.create({
   title: { ...type.h1, color: colors.text },
   reasons: { gap: 4 },
   reason: { ...type.body, color: colors.text },
+  note: { ...type.caption, color: colors.textMuted },
 });

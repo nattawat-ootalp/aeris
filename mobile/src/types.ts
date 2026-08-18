@@ -35,6 +35,13 @@ export interface DestinationAssessment {
   freshness_sec: number | null;
   pm25: number | null;
   trend: string | null;
+  // Context from the same frame, sent only with an 'ok' status. The watch label is decided by
+  // PM2.5 alone, so these must never be rendered as if they set it.
+  pm10: number | null;
+  co2: number | null;
+  tvoc: number | null;
+  temperature: number | null;
+  humidity: number | null;
 }
 
 export interface NodeMarker {
