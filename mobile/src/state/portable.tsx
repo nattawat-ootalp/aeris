@@ -1,5 +1,5 @@
 /** Shared portable-device state (BLE connection + latest telemetry) across screens. */
-import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Device } from 'react-native-ble-plx';
 import {
   connectAndSubscribe,
@@ -10,7 +10,9 @@ import {
   type PortableTelemetry,
   type ScanFailureReason,
 } from '../lib/ble';
-import { ingestPortable, registerDevice } from '../api/client';
+import { createDeviceClock } from '../lib/deviceClock';
+import { drainOutbox, enqueueReading, subscribeOutbox, type OutboxState } from '../lib/outbox';
+import { registerDevice } from '../api/client';
 
 type ConnState = 'disconnected' | 'scanning' | 'connecting' | 'connected';
 
@@ -27,6 +29,9 @@ interface PortableCtx {
   lastSos: PortableSos | null;
   clearSos: () => void;
   scanFailure: ScanFailureReason | null;
+  /** Readings captured but not yet stored by the backend, plus any lost to the queue cap.
+   *  Surfaced so the app can say the record is behind instead of quietly pretending it is not. */
+  outbox: OutboxState;
   startPairing: () => void;
   stopPairing: () => void;
   disconnectDevice: () => void;
@@ -43,8 +48,20 @@ export function PortableProvider({ children }: { children: ReactNode }) {
   const [lastSeenAt, setLastSeenAt] = useState<number | null>(null);
   const [lastSos, setLastSos] = useState<PortableSos | null>(null);
   const [scanFailure, setScanFailure] = useState<ScanFailureReason | null>(null);
+  const [outbox, setOutbox] = useState<OutboxState>({ pending: 0, dropped: 0, syncing: false });
   const deviceRef = useRef<Device | null>(null);
   const stopScanRef = useRef<() => void>(() => {});
+  // One anchor per provider, reset on disconnect: it maps the device's uptime counter onto real
+  // time, and an anchor from a previous connection would misdate every sample of the next one.
+  const clockRef = useRef(createDeviceClock());
+
+  useEffect(() => {
+    const unsubscribe = subscribeOutbox(setOutbox);
+    // A backlog can outlive the app — readings buffered while the network was down are still
+    // on disk from the last run, so try to hand them over before anything new arrives.
+    void drainOutbox();
+    return unsubscribe;
+  }, []);
 
   const startPairing = useCallback(() => {
     setState('scanning');
@@ -63,10 +80,14 @@ export function PortableProvider({ children }: { children: ReactNode }) {
             (t) => {
               setTelemetry(t);
               setLastSeenAt(Date.now());
-              // forward to backend for history/decision; device_id = the BLE device id
-              ingestPortable({
+              // Queue for the backend rather than firing and forgetting: an upload that fails
+              // used to lose the sample outright. The timestamp is when the DEVICE measured it,
+              // reconstructed from its uptime counter — stamping "now" would be a lie for
+              // anything that waits in the queue, and the whole backlog would collapse onto one
+              // instant when it finally drains.
+              enqueueReading({
                 device_id: device.id,
-                timestamp: new Date().toISOString(),
+                timestamp: new Date(clockRef.current.captureTime(t.ts)).toISOString(),
                 pm25: t.pm25,
                 temperature: t.temperature,
                 humidity: t.humidity,
@@ -78,7 +99,7 @@ export function PortableProvider({ children }: { children: ReactNode }) {
                 battery: t.battery,
                 sensor_status: t.sensor_status,
                 quality_score: t.quality_score,
-              }).catch(() => {}); // best-effort; local display already updated
+              });
             },
             () => {
               setState('disconnected');
@@ -86,6 +107,10 @@ export function PortableProvider({ children }: { children: ReactNode }) {
               setStatus(null);
               setDeviceId(null);
               deviceRef.current = null;
+              clockRef.current.reset();
+              // Whatever is still queued has nothing to do with the device being gone — push it
+              // now that the radio work has stopped competing for the connection.
+              void drainOutbox();
             },
             (s) => {
               setStatus(s);
@@ -136,11 +161,13 @@ export function PortableProvider({ children }: { children: ReactNode }) {
     setTelemetry(null);
     setStatus(null);
     setDeviceId(null);
+    clockRef.current.reset();
+    void drainOutbox();
   }, []);
 
   return (
     <Ctx.Provider
-      value={{ state, deviceName, deviceId, telemetry, status, lastSeenAt, lastSos, clearSos, scanFailure, startPairing, stopPairing, disconnectDevice }}
+      value={{ state, deviceName, deviceId, telemetry, status, lastSeenAt, lastSos, clearSos, scanFailure, outbox, startPairing, stopPairing, disconnectDevice }}
     >
       {children}
     </Ctx.Provider>

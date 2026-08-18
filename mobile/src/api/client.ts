@@ -137,7 +137,10 @@ export async function logSymptom(input: SymptomEventInput): Promise<{ stored: bo
   return postJsonAuthed('/symptoms', input);
 }
 
-export async function ingestPortable(payload: {
+/** One telemetry sample on its way to the backend. `timestamp` is when the reading was
+ *  CAPTURED, not when it is being uploaded — the two differ whenever a sample was buffered,
+ *  and the backend stores the reading at exactly this time (see src/lib/deviceClock.ts). */
+export interface PortableIngestPayload {
   device_id: string;
   timestamp: string;
   pm25?: number;
@@ -152,7 +155,9 @@ export async function ingestPortable(payload: {
   battery?: number;
   sensor_status?: string;
   quality_score?: number;
-}): Promise<{ accepted: boolean }> {
+}
+
+export async function ingestPortable(payload: PortableIngestPayload): Promise<{ accepted: boolean }> {
   const res = await fetch(`${BASE_URL}/ingest/portable`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -160,6 +165,36 @@ export async function ingestPortable(payload: {
   });
   if (!res.ok) throw new ApiError(res.status, `POST /ingest/portable -> ${res.status}`);
   return (await res.json()) as { accepted: boolean };
+}
+
+/** An entry the backend could not store. `retryable` false means it never will be (a sample
+ *  whose device clock had not synced, say) — the caller must drop it rather than queue it
+ *  forever behind everything else. */
+export interface PortableBatchFailure {
+  index: number;
+  error: string;
+  retryable: boolean;
+}
+
+export interface PortableBatchResult {
+  accepted: boolean;
+  received: number;
+  stored: number;
+  failed: PortableBatchFailure[];
+}
+
+/** Replay buffered readings in one request. Idempotent by capture timestamp, so a caller that
+ *  never saw the response may safely re-send the same entries. */
+export async function ingestPortableBatch(
+  readings: PortableIngestPayload[],
+): Promise<PortableBatchResult> {
+  const res = await fetch(`${BASE_URL}/ingest/portable/batch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ readings }),
+  });
+  if (!res.ok) throw new ApiError(res.status, `POST /ingest/portable/batch -> ${res.status}`);
+  return (await res.json()) as PortableBatchResult;
 }
 
 const dev = (deviceId: string) => `/devices/${encodeURIComponent(deviceId)}`;
