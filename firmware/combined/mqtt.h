@@ -14,11 +14,10 @@
 #endif
 
 // ===== Firmware Version =====
-// Guarded so the combined sketch can name itself: one binary carries one version, and the
-// number reported over BLE must be the same one published on the MQTT health topic.
-#ifndef FW_VERSION
-#define FW_VERSION    "1.5.0"
-#endif
+// Defined HERE, not in the sketch. A #define in combined.ino reaches only that translation
+// unit, so mqtt.cpp kept compiling against the old default and published a version the board
+// was not running — which is exactly the kind of thing a version string exists to prevent.
+#define FW_VERSION    "combined-1.0.0"
 
 // ===== MQTT Topic Patterns =====
 // {org}/airsentinel/{node_id}/{sub-topic}

@@ -40,9 +40,9 @@
 //  Sensors: PMS7003 (PM2.5/PM10), SCD40 (CO2/Temp/Hum), SGP30 (TVOC/eCO2).
 // ============================================================
 
-// Named before mqtt.h, which guards its own default. One binary, one version — reported over
-// BLE and on the MQTT health topic alike, so a board can be identified from either side.
-#define FW_VERSION "combined-1.0.0"
+// FW_VERSION comes from mqtt.h, which every translation unit here includes. Defining it in
+// this file instead would leave mqtt.cpp publishing a different number than the BLE status
+// reports — one binary must not describe itself two ways.
 
 #include "sensors.h"
 #include "ble.h"
