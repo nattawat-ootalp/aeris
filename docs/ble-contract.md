@@ -46,10 +46,16 @@ Neither hop is assumed to be up: see "Buffered replay" below.
 - `tvoc` / `eco2`: from the **SGP30**. **`eco2` is an *estimated* CO2-equivalent derived from VOC sensing — it is NOT a real CO2 measurement.** The SCD40's true NDIR CO2 is transmitted separately as `co2` above; apps/backends must not label `eco2` as "CO2" or treat it as interchangeable with the real reading. Both fields are **omitted entirely** (not sent as `0` or `null`) whenever the SGP30 is invalid — during its 15 s power-on warmup, after an I2C bus recovery re-warmup, or when the chip is not physically present on the bus. Omission is the sole "no data" signal; consumers must render "no data", never treat a missing field as 0.
 - `ts`: **seconds since the device booted** (`millis()/1000`), not an epoch. The portable has
   no RTC and no network, so it cannot know the date. The phone recovers the real capture time
-  by anchoring this counter to its own clock on connect (`mobile/src/lib/deviceClock.ts`) and
-  re-anchoring when `ts` jumps backwards, which is what a reboot looks like. The phone must
-  NOT simply stamp the arrival time: that is indistinguishable from the truth for a live
-  reading and completely wrong for a replayed one.
+  by anchoring this counter to its own clock (`mobile/src/lib/deviceClock.ts`), re-anchoring
+  when `ts` jumps backwards, which is what a reboot looks like. The phone must NOT simply stamp
+  the arrival time: that is indistinguishable from the truth for a live reading and completely
+  wrong for a replayed one.
+- **Only a live frame may set the anchor** — see "Buffered replay" below. A frame with
+  `"buf":true` arrived long after it was measured, so anchoring from one folds that delay into
+  the offset; and because the frames around it are replayed too, each in turn looks late and
+  re-anchors again, spacing an hour of history at the milliseconds the radio delivered it in.
+  The firmware will not replay before a live frame has gone out, and the phone holds any
+  replayed frame it receives before the clock is anchored rather than guessing at its time.
 - MTU: request ≥185 so the JSON fits one notification; if MTU is small the firmware still keeps the JSON <180 bytes. Measured worst case (all fields present including `co2`, longest string/decimal cases): ~170 bytes.
 
 ### Device status JSON
@@ -75,9 +81,12 @@ stack refuses) are held in a ring buffer and replayed when a phone reconnects.
 - **When full, the OLDEST sample is evicted** and counted in `dropped` above. Dropping the newest
   instead would mean a phone reconnects to an hour of history that stops before the present,
   which is the more misleading of the two failures.
-- **Replay starts ~1.5 s after connect**, once the phone has had time to finish discovery and
-  subscribe. It is rate-limited to a couple of notifications per firmware loop pass (~40/s), so a
-  full ring drains in about 20 s and the live 5 s sample keeps flowing throughout.
+- **Replay starts ~1.5 s after connect AND after one live frame has been sent** — the first so
+  the phone has finished discovery and subscribed, the second so it has something to anchor its
+  clock to (see `ts` above). Without the second condition a reconnect would usually deliver a
+  replayed frame first, since draining begins at 1.5 s while the next live sample can be up to
+  5 s away. It is then rate-limited to a couple of notifications per firmware loop pass (~40/s),
+  so a full ring drains in about 20 s and the live 5 s sample keeps flowing throughout.
 - **A replayed frame is byte-identical to the live one it would have been, plus `"buf":true`.**
   Every omit-when-invalid rule above still holds: validity is carried through the buffer as a
   flag, never as a zero, so a replayed sample omits exactly the fields the live one would have.

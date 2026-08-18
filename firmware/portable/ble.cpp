@@ -12,6 +12,11 @@ static NimBLECharacteristic* commandChar = nullptr;
 static NimBLECharacteristic* sosChar = nullptr;
 static bool connected = false;
 static unsigned long connectedAt = 0;
+// Whether a LIVE sample has gone out since this phone connected. Replay must not come first:
+// the phone reconstructs real capture times by anchoring the device's uptime counter to its
+// own clock, and it can only do that from a frame that arrived when it was measured. Anchoring
+// from a replayed frame would fold the delivery delay into the offset and flatten the backlog.
+static bool liveSentSinceConnect = false;
 
 // Discovery and subscribing to the telemetry characteristic take the phone a moment after the
 // link comes up. Replaying before that would notify into nothing.
@@ -24,6 +29,7 @@ class ServerCallbacks : public NimBLEServerCallbacks {
   void onConnect(NimBLEServer* s, NimBLEConnInfo& info) override {
     connected = true;
     connectedAt = millis();
+    liveSentSinceConnect = false;
     Serial.printf("[BLE] Phone connected - %u buffered sample(s) to replay\n",
                   (unsigned)bufferCount());
   }
@@ -176,7 +182,9 @@ void bleNotifyTelemetry(const SensorData& data, bool sensorsValid, int battery_p
     // the same treatment: buffer it rather than let it evaporate.
     Serial.println("[BLE] notify refused — buffering the sample");
     bufferPush(sample);
+    return;
   }
+  liveSentSinceConnect = true;
 }
 
 void bleServiceBuffer() {
@@ -185,6 +193,11 @@ void bleServiceBuffer() {
   // the telemetry characteristic yet. Replaying into that window would spend the backlog at
   // the exact moment it finally became deliverable.
   if (millis() - connectedAt < REPLAY_START_DELAY_MS) return;
+  // Hold the backlog until one live sample has gone out. The live notify is what lets the phone
+  // anchor the device's uptime counter to real time; a replayed frame arriving first would
+  // anchor it to the moment of delivery instead, and an hour of history would be dated to the
+  // twenty seconds the transfer took. Costs at most one 5 s sample interval.
+  if (!liveSentSinceConnect) return;
 
   // Rate-limited on purpose. Emptying the ring in one pass would outrun the connection
   // interval and every notify past that point fails — turning a full buffer into a fast way

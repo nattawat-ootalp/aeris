@@ -39,6 +39,29 @@ interface PortableCtx {
 
 const Ctx = createContext<PortableCtx | null>(null);
 
+/** Device readings the firmware replayed before any live frame had anchored the clock. Bounded
+ *  at the firmware ring's own capacity — holding more than the device can buffer would mean
+ *  holding readings that cannot exist. */
+const MAX_HELD_REPLAYS = 720;
+
+function toIngestPayload(deviceId: string, t: PortableTelemetry, capturedAt: number) {
+  return {
+    device_id: deviceId,
+    timestamp: new Date(capturedAt).toISOString(),
+    pm25: t.pm25,
+    temperature: t.temperature,
+    humidity: t.humidity,
+    // undefined stays undefined here (JSON.stringify drops the key) so an absent
+    // SGP30 reading is omitted from the request, never coerced to 0/null.
+    co2: t.co2,
+    tvoc: t.tvoc,
+    eco2: t.eco2,
+    battery: t.battery,
+    sensor_status: t.sensor_status,
+    quality_score: t.quality_score,
+  };
+}
+
 export function PortableProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<ConnState>('disconnected');
   const [deviceName, setDeviceName] = useState<string | null>(null);
@@ -54,6 +77,33 @@ export function PortableProvider({ children }: { children: ReactNode }) {
   // One anchor per provider, reset on disconnect: it maps the device's uptime counter onto real
   // time, and an anchor from a previous connection would misdate every sample of the next one.
   const clockRef = useRef(createDeviceClock());
+  // The firmware starts replaying its buffer shortly after connect, usually BEFORE the next
+  // live sample is due — so the first frames of a reconnection are typically replayed ones,
+  // arriving while the clock still has no anchor. They are held here rather than dated from
+  // their arrival, which would compress the whole backlog into the seconds it took to transfer.
+  const heldReplaysRef = useRef<PortableTelemetry[]>([]);
+
+  const queueBuffered = useCallback((deviceId: string, t: PortableTelemetry) => {
+    const capturedAt = clockRef.current.observeBuffered(t.ts);
+    if (capturedAt !== null) {
+      enqueueReading(toIngestPayload(deviceId, t, capturedAt));
+      return;
+    }
+    heldReplaysRef.current.push(t);
+    if (heldReplaysRef.current.length > MAX_HELD_REPLAYS) heldReplaysRef.current.shift();
+  }, []);
+
+  const flushHeldReplays = useCallback((deviceId: string) => {
+    const held = heldReplaysRef.current;
+    if (held.length === 0) return;
+    heldReplaysRef.current = [];
+    for (const t of held) {
+      const capturedAt = clockRef.current.observeBuffered(t.ts);
+      // Still undatable means the frame carried no usable uptime. Dating it "now" would assert
+      // the device measured it in the present, so it is dropped instead of falsified.
+      if (capturedAt !== null) enqueueReading(toIngestPayload(deviceId, t, capturedAt));
+    }
+  }, []);
 
   useEffect(() => {
     const unsubscribe = subscribeOutbox(setOutbox);
@@ -82,30 +132,21 @@ export function PortableProvider({ children }: { children: ReactNode }) {
               // become the reading on screen — that would show the user a measurement from
               // half an hour ago as if it were the room they are standing in. It is still
               // real data and still belongs in the record, so it goes to the backend either way.
-              if (!t.buf) {
-                setTelemetry(t);
-                setLastSeenAt(Date.now());
+              if (t.buf) {
+                queueBuffered(device.id, t);
+                return;
               }
+              setTelemetry(t);
+              setLastSeenAt(Date.now());
               // Queue for the backend rather than firing and forgetting: an upload that fails
               // used to lose the sample outright. The timestamp is when the DEVICE measured it,
               // reconstructed from its uptime counter — stamping "now" would be a lie for
               // anything that waits in the queue, and the whole backlog would collapse onto one
               // instant when it finally drains.
-              enqueueReading({
-                device_id: device.id,
-                timestamp: new Date(clockRef.current.captureTime(t.ts)).toISOString(),
-                pm25: t.pm25,
-                temperature: t.temperature,
-                humidity: t.humidity,
-                // undefined stays undefined here (JSON.stringify drops the key) so an absent
-                // SGP30 reading is omitted from the request, never coerced to 0/null.
-                co2: t.co2,
-                tvoc: t.tvoc,
-                eco2: t.eco2,
-                battery: t.battery,
-                sensor_status: t.sensor_status,
-                quality_score: t.quality_score,
-              });
+              enqueueReading(toIngestPayload(device.id, t, clockRef.current.observeLive(t.ts)));
+              // This live frame is what anchors the clock, so anything the device replayed
+              // before it can finally be placed in time.
+              flushHeldReplays(device.id);
             },
             () => {
               setState('disconnected');
@@ -114,6 +155,7 @@ export function PortableProvider({ children }: { children: ReactNode }) {
               setDeviceId(null);
               deviceRef.current = null;
               clockRef.current.reset();
+              heldReplaysRef.current = [];
               // Whatever is still queued has nothing to do with the device being gone — push it
               // now that the radio work has stopped competing for the connection.
               void drainOutbox();
@@ -168,6 +210,7 @@ export function PortableProvider({ children }: { children: ReactNode }) {
     setStatus(null);
     setDeviceId(null);
     clockRef.current.reset();
+    heldReplaysRef.current = [];
     void drainOutbox();
   }, []);
 

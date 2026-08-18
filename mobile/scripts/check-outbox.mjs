@@ -87,55 +87,83 @@ async function test(name, fn) {
 }
 
 // ── deviceClock ──
-await test('clock: first sample anchors uptime to the phone clock', () => {
+await test('clock: first live sample anchors uptime to the phone clock', () => {
   const c = createDeviceClock();
-  assert.equal(c.captureTime(100, 1_000_000), 1_000_000);
+  assert.equal(c.observeLive(100, T0), T0);
 });
 await test('clock: live samples keep pace with the phone clock', () => {
   const c = createDeviceClock();
-  assert.equal(c.captureTime(100, T0), T0);
-  assert.equal(c.captureTime(105, T0 + 5_000), T0 + 5_000);
+  c.observeLive(100, T0);
+  assert.equal(c.observeLive(105, T0 + 5_000), T0 + 5_000);
 });
 await test('clock: a drained buffer keeps each capture moment, not the arrival moment', () => {
   const c = createDeviceClock();
-  c.captureTime(100, T0);
+  c.observeLive(100, T0);
   // link drops; the device buffers. On reconnect it dumps 110/115/120 in one burst at +30 s.
   const burst = T0 + 30_000;
-  assert.equal(c.captureTime(110, burst), T0 + 10_000);
-  assert.equal(c.captureTime(115, burst), T0 + 15_000);
-  assert.equal(c.captureTime(120, burst), T0 + 20_000);
+  assert.equal(c.observeBuffered(110, burst), T0 + 10_000);
+  assert.equal(c.observeBuffered(115, burst), T0 + 15_000);
+  assert.equal(c.observeBuffered(120, burst), T0 + 20_000);
 });
 await test('clock: an hour-long backlog is NOT collapsed onto the present', () => {
   const c = createDeviceClock();
-  c.captureTime(100, T0);
+  c.observeLive(100, T0);
   // link down for an hour; the device kept sampling. On reconnect it dumps the whole ring.
   const burst = T0 + 3_600_000;
-  assert.equal(c.captureTime(105, burst), T0 + 5_000, 'oldest entry lost its capture time');
-  assert.equal(c.captureTime(1900, burst), T0 + 1_800_000);
-  assert.equal(c.captureTime(3700, burst), T0 + 3_600_000, 'newest entry should land at now');
+  assert.equal(c.observeBuffered(105, burst), T0 + 5_000, 'oldest entry lost its capture time');
+  assert.equal(c.observeBuffered(1900, burst), T0 + 1_800_000);
+  assert.equal(c.observeBuffered(3700, burst), T0 + 3_600_000, 'newest entry should land at now');
 });
-await test('clock: never dates a reading after it arrived', () => {
+await test('clock: a replay arriving before any live sample cannot be dated, and says so', () => {
+  // The real shape of a reconnect: the firmware starts draining ~1.5 s in, while the next live
+  // sample is up to 5 s away, so replayed frames usually arrive FIRST and the anchor is still
+  // null. Dating them from arrival would space an hour of history milliseconds apart.
   const c = createDeviceClock();
-  // the first sample was itself delayed 60 s, so the anchor starts 60 s too late
-  c.captureTime(100, T0);
-  const t = c.captureTime(40, T0 + 1_000);
-  assert.ok(t <= T0 + 1_000, 'capture time ' + t + ' is in the future relative to arrival');
+  assert.equal(c.observeBuffered(1800, T0), null);
+  assert.equal(c.observeBuffered(1805, T0 + 50), null);
+  assert.equal(c.anchored, false);
+});
+await test('clock: held replays are dated correctly once a live sample anchors', () => {
+  const c = createDeviceClock();
+  const held = [1800, 1805, 1810];
+  for (const ts of held) assert.equal(c.observeBuffered(ts, T0), null);
+  // the first live frame lands 2 s later and carries uptime 1815
+  const live = c.observeLive(1815, T0 + 2_000);
+  const dated = held.map((ts) => c.observeBuffered(ts));
+  assert.equal(c.anchored, true);
+  assert.deepEqual(dated, [live - 15_000, live - 10_000, live - 5_000]);
+  assert.equal(dated[1] - dated[0], 5_000, 'backlog must keep its 5 s spacing');
+});
+await test('clock: a replayed frame never moves the anchor', () => {
+  const c = createDeviceClock();
+  c.observeLive(100, T0);
+  c.observeBuffered(50, T0 + 600_000); // an old sample delivered ten minutes late
+  assert.equal(c.observeLive(105, T0 + 5_000), T0 + 5_000, 'anchor was disturbed by a replay');
 });
 await test('clock: a reboot re-anchors instead of dating samples in the past', () => {
   const c = createDeviceClock();
-  c.captureTime(3600, 5_000_000);
-  const after = c.captureTime(2, 5_100_000);
-  assert.equal(after, 5_100_000, 'expected re-anchor to now, got ' + after);
+  c.observeLive(3600, T0);
+  assert.equal(c.observeLive(2, T0 + 100_000), T0 + 100_000);
 });
-await test('clock: a missing ts falls back to arrival time, never a guess', () => {
+await test('clock: never dates a reading after it arrived', () => {
   const c = createDeviceClock();
-  assert.equal(c.captureTime(undefined, 42), 42);
+  // the first sample was itself delayed, so the anchor starts too late
+  c.observeLive(100, T0);
+  const t = c.observeLive(40, T0 + 1_000);
+  assert.ok(t <= T0 + 1_000, 'capture time ' + t + ' is in the future relative to arrival');
+});
+await test('clock: a live sample with no uptime falls back to arrival, a replayed one does not', () => {
+  const c = createDeviceClock();
+  assert.equal(c.observeLive(undefined, 42), 42);
+  c.observeLive(100, T0);
+  assert.equal(c.observeBuffered(undefined, T0 + 1_000), null);
 });
 await test('clock: reset drops the anchor', () => {
   const c = createDeviceClock();
-  c.captureTime(100, 1_000_000);
+  c.observeLive(100, T0);
   c.reset();
-  assert.equal(c.captureTime(999, 2_000_000), 2_000_000);
+  assert.equal(c.anchored, false);
+  assert.equal(c.observeBuffered(105, T0 + 5_000), null);
 });
 
 // ── outbox ──
