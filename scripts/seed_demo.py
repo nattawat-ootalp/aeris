@@ -230,6 +230,16 @@ def main(argv: list[str] | None = None) -> int:
             "personal pattern screen stays empty."
         ),
     )
+    parser.add_argument(
+        "--skip-readings",
+        action="store_true",
+        help=(
+            "register the device and file symptoms, but write no telemetry. Use when the device "
+            "already holds a seeded series: a second full run generates a fresh set of "
+            "timestamps rather than overwriting the first, leaving two interleaved series that "
+            "shred the exposure timeline into single-sample blips."
+        ),
+    )
     parser.add_argument("--dry-run", action="store_true", help="report what would be written and exit")
     args = parser.parse_args(argv)
 
@@ -250,7 +260,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"device      {args.device_id}")
     print(f"source tag  {DEMO_SOURCE}")
     print(f"span        {args.days} days, one point every {INTERVAL_SEC}s")
-    print(f"points      {len(readings)}")
+    print(f"points      {0 if args.skip_readings else len(readings)}" + ("  (--skip-readings)" if args.skip_readings else ""))
     print(f"range       {readings[0].timestamp.isoformat()} .. {readings[-1].timestamp.isoformat()}")
     print(f"peak PM2.5  {max(r.pm25 for r in readings):.1f} ug/m3")
     print(f"episodes    {len(episodes)} elevated (caution >= {CONFIG.pm25_env_caution} ug/m3)")
@@ -260,11 +270,14 @@ def main(argv: list[str] | None = None) -> int:
         print("\ndry run — nothing written")
         return 0
 
-    # The same gate real telemetry passes through. Seeded points are old, so they are stored and
-    # flagged not-fresh exactly as a genuine backfill would be; nothing here can enter in a shape
-    # real data could not have.
-    writers.write_readings([(r, validate(r, now=now)) for r in readings], DEMO_SOURCE)
-    print(f"\nwrote {len(readings)} points")
+    if args.skip_readings:
+        print("\nskipped telemetry — the device keeps the series it already has")
+    else:
+        # The same gate real telemetry passes through. Seeded points are old, so they are stored
+        # and flagged not-fresh exactly as a genuine backfill would be; nothing here can enter in
+        # a shape real data could not have.
+        writers.write_readings([(r, validate(r, now=now)) for r in readings], DEMO_SOURCE)
+        print(f"\nwrote {len(readings)} points")
 
     # Deliberately NOT ingestion's writers.upsert_device(): that keeps its own registry row and
     # is not what /me/devices reads. The app's device list is user-scoped, so registering the

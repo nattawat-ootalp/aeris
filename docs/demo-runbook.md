@@ -27,6 +27,18 @@ python scripts/feed_demo.py --device-id DEMO-ROOM-001
 
 Add `--dry-run` to the seeder first to see what it would write without writing it.
 
+**Run the full seed once per device id.** A second full run generates a fresh set of timestamps
+rather than overwriting the first, so both series persist and interleave — which shreds the
+exposure timeline into single-sample blips and makes the pattern screen report an absurd
+"exposure periods seen". To attach an already-seeded device to another account (a fresh app
+install mints a new anonymous user, see below), use `--skip-readings`:
+
+```
+python scripts/seed_demo.py --device-id DEMO-ROOM-002 --days 14 --owner <new-uuid> --skip-readings
+```
+
+That registers the device and files symptoms without touching the telemetry.
+
 Sign into the app with that same account. Give the feeder about a minute before you present.
 
 A real portable, connected for five minutes, does all of this on its own and is the better demo
@@ -91,6 +103,15 @@ The environment variable alone is **not** enough. `useActiveDeviceId()` in
 The override is third, and the baseline and pattern endpoints require auth — so the demo has to
 be signed in, which makes step 2 live and it wins for any account that has ever paired a device.
 Setting the variable and nothing else gives you a demo showing a real device's empty history.
+
+**A fresh install mints a NEW anonymous user.** `ensureSessionToken()` reuses a stored session
+and otherwise calls `signInAnonymously()`, so installing the APK on a new device produces a user
+with no registered device and no symptoms — the demo shows nothing personal. Find the new uuid
+(Supabase → Authentication → Users, newest `created_at`) and re-run with `--owner <uuid>
+--skip-readings`.
+
+This also rescues an APK built against the wrong device id: registration is resolved at step 2,
+ahead of the baked-in `EXPO_PUBLIC_DEFAULT_DEVICE_ID` at step 3, so no rebuild is needed.
 
 `--owner` fixes this by registering the demo device at step 2. The value is the `sub` of that
 account's JWT — Supabase dashboard → Authentication → Users → the user's UID. Use an account

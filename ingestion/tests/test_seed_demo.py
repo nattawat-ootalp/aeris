@@ -221,3 +221,23 @@ def test_a_dry_run_registers_nothing(monkeypatch, offline):
     seed_demo.main(["--device-id", "DEMO-ROOM-001", "--days", "1", "--owner", "user-42", "--dry-run"])
     assert registered == []
     assert offline["write_readings"] == []
+
+
+def test_skip_readings_registers_and_files_but_writes_no_telemetry(monkeypatch, offline):
+    # Re-running a full seed against a device that already holds one generates a second set of
+    # timestamps rather than overwriting the first, leaving two interleaved series. That shreds
+    # the exposure timeline into single-sample blips, which exposure_episode_starts counts and
+    # the pattern screen renders verbatim.
+    filed: list = []
+    registered: list = []
+    monkeypatch.setattr(seed_demo.repo, "store_symptom", lambda sub, rows: filed.append((sub, rows)))
+    monkeypatch.setattr(seed_demo.repo, "upsert_device", lambda sub, d: registered.append((sub, d)))
+
+    rc = seed_demo.main(
+        ["--device-id", "DEMO-ROOM-002", "--days", "14", "--owner", "user-42", "--skip-readings"]
+    )
+    assert rc == 0
+    assert offline["write_readings"] == [], "no telemetry may be written"
+    assert offline["write_reading"] == []
+    assert len(registered) == 1 and registered[0][0] == "user-42"
+    assert len(filed) == 1 and len(filed[0][1]) >= CONFIG.pattern_min_samples
