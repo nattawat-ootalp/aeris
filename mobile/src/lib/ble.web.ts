@@ -172,6 +172,21 @@ export async function scanForPortables(
 }
 
 /**
+ * The id this app uses for a portable, everywhere: in the ingested reading, in the device
+ * registry, and in the path of every later query about it.
+ *
+ * Web Bluetooth ids are base64, so they can contain `+` and `/`. A `/` cannot survive inside a
+ * URL path segment — percent-encoded or not, the request is normalised on the way in and
+ * reaches the API as a route that does not exist, which is why every device-scoped screen
+ * (today's summary, weekly history, baseline, pattern) came back "could not load" in a browser
+ * while the same screens worked on Android, where the id is a MAC address. Mapping to the
+ * URL-safe base64 alphabet keeps the id unique and makes it a legal path segment.
+ */
+export function portableDeviceId(device: WebBleDevice): string {
+  return device.id.replace(/\+/g, '-').replace(/\//g, '_');
+}
+
+/**
  * The device this origin already has permission for, by id — or null when the browser cannot
  * say. Reloading a page destroys every JS object, including the connected BLEDevice, so
  * without this a refresh drops the portable and only a new trip through the chooser (which
@@ -186,7 +201,7 @@ export async function findKnownPortable(deviceId: string): Promise<WebBleDevice 
   if (!ble?.getDevices) return null;
   try {
     const devices = await ble.getDevices();
-    return devices.find((d) => d.id === deviceId) ?? null;
+    return devices.find((d) => portableDeviceId(d) === deviceId) ?? null;
   } catch {
     return null;
   }

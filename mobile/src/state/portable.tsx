@@ -6,6 +6,7 @@ import {
   connectAndSubscribe,
   disconnect,
   findKnownPortable,
+  portableDeviceId,
   scanForPortables,
   type PortableSos,
   type PortableStatus,
@@ -123,11 +124,14 @@ export function PortableProvider({ children }: { children: ReactNode }) {
 
   const attachDevice = useCallback(async (device: Device) => {
     if (deviceRef.current) return; // already connecting/connected
+    // One spelling of the id for the whole session: what is stored with the readings is what
+    // every later query asks for (src/lib/ble.ts, src/lib/ble.web.ts).
+    const id = portableDeviceId(device);
     deviceRef.current = device;
     stopScanRef.current();
     setState('connecting');
-    setDeviceName(device.name ?? device.id);
-    setDeviceId(device.id);
+    setDeviceName(device.name ?? id);
+    setDeviceId(id);
     try {
       await connectAndSubscribe(
         device,
@@ -137,7 +141,7 @@ export function PortableProvider({ children }: { children: ReactNode }) {
           // half an hour ago as if it were the room they are standing in. It is still
           // real data and still belongs in the record, so it goes to the backend either way.
           if (t.buf) {
-            queueBuffered(device.id, t);
+            queueBuffered(id, t);
             return;
           }
           setTelemetry(t);
@@ -147,10 +151,10 @@ export function PortableProvider({ children }: { children: ReactNode }) {
           // reconstructed from its uptime counter — stamping "now" would be a lie for
           // anything that waits in the queue, and the whole backlog would collapse onto one
           // instant when it finally drains.
-          enqueueReading(toIngestPayload(device.id, t, clockRef.current.observeLive(t.ts)));
+          enqueueReading(toIngestPayload(id, t, clockRef.current.observeLive(t.ts)));
           // This live frame is what anchors the clock, so anything the device replayed
           // before it can finally be placed in time.
-          flushHeldReplays(device.id);
+          flushHeldReplays(id);
         },
         () => {
           setState('disconnected');
@@ -168,7 +172,7 @@ export function PortableProvider({ children }: { children: ReactNode }) {
           setStatus(s);
           // Keep the registry row's firmware version current once the device reports it.
           registerDevice({
-            external_id: device.id,
+            external_id: id,
             kind: 'portable',
             label: device.name ?? undefined,
             fw_version: s.fw,
@@ -179,11 +183,11 @@ export function PortableProvider({ children }: { children: ReactNode }) {
       setState('connected');
       // Remembered only after the connection is up: an id that never connected would send
       // every later start into a reconnection attempt that cannot succeed.
-      void AsyncStorage.setItem(LAST_DEVICE_KEY, device.id);
+      void AsyncStorage.setItem(LAST_DEVICE_KEY, id);
       // Register on connect even if the status characteristic never answers, so the
       // device still appears in the user's device list.
       registerDevice({
-        external_id: device.id,
+        external_id: id,
         kind: 'portable',
         label: device.name ?? undefined,
       }).catch(() => {}); // best-effort; pairing must work fully offline

@@ -103,6 +103,16 @@ export type ScanFailureReason =
   | 'blocked-by-policy';
 
 /**
+ * The id this app uses for a portable, everywhere. On a phone that is the device id the
+ * platform reports (a MAC address on Android), which is already safe to put in a URL path —
+ * the web build has to map its base64 ids onto the URL-safe alphabet, so both builds go
+ * through this one function rather than reading `device.id` in a dozen places.
+ */
+export function portableDeviceId(device: Device): string {
+  return device.id;
+}
+
+/**
  * A device this app has seen before, by id, without scanning for it — the counterpart of the
  * web build's getDevices() (src/lib/ble.web.ts). Used to reconnect to the last portable after
  * the app (or, on the web, the page) has been restarted, so a reload does not cost the user a
