@@ -107,9 +107,13 @@ def require_user(creds: HTTPAuthorizationCredentials | None = Depends(_bearer)) 
         return decode_token(creds.credentials)
     except jwt.PyJWTError:
         pass
-    if settings.SUPABASE_JWT_SECRET:
-        try:
-            return decode_supabase_token(creds.credentials)
-        except jwt.PyJWTError as e:
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid token") from e
-    raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid token")
+    # Reached unconditionally. This used to be gated on SUPABASE_JWT_SECRET, which is only
+    # needed by the HS256 branch — an ES256 token verifies against the published JWKS and needs
+    # nothing but SUPABASE_URL. A project on signing keys with no legacy secret therefore 401'd
+    # on every authenticated request while its configuration was correct. decode_supabase_token
+    # raises InvalidKeyError with a specific message when the scheme it picked is unconfigured,
+    # so genuinely-unconfigured still fails here — for the right reason.
+    try:
+        return decode_supabase_token(creds.credentials)
+    except jwt.PyJWTError as e:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid token") from e

@@ -12,6 +12,8 @@ from datetime import UTC, datetime, timedelta
 import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import ec
+from fastapi import HTTPException
+from fastapi.security import HTTPAuthorizationCredentials
 
 from core_api.app import security
 
@@ -82,3 +84,50 @@ def test_hs256_without_a_configured_secret_fails_clearly(monkeypatch):
     token = jwt.encode(_claims(), "whatever", algorithm="HS256")
     with pytest.raises(jwt.InvalidKeyError):
         security.decode_supabase_token(token)
+
+
+# ── require_user: which verifier a request actually reaches ──────────────────────────────────
+# decode_supabase_token above was already covered; the dependency that calls it was not, and
+# that is where the two schemes were being conflated.
+
+
+def _creds(token: str) -> HTTPAuthorizationCredentials:
+    return HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
+
+def test_a_signing_key_project_is_accepted_without_a_legacy_secret(monkeypatch):
+    """The regression: an ES256 token verifies against the JWKS, which needs no shared secret.
+
+    require_user used to skip the Supabase verifier entirely unless SUPABASE_JWT_SECRET was
+    set, so a project that had migrated to signing keys — the current Supabase default — got a
+    401 on every authenticated endpoint while nothing about its configuration was wrong.
+    """
+    private, public = _es256_keypair()
+    monkeypatch.setattr(security, "_supabase_jwks", lambda: _FakeJwks(public))
+    monkeypatch.setattr(security.settings, "SUPABASE_JWT_SECRET", "")
+    token = jwt.encode(_claims(), private, algorithm="ES256")
+
+    assert security.require_user(_creds(token))["sub"].startswith("d161df4e")
+
+
+def test_our_own_token_is_tried_before_supabase(monkeypatch):
+    """The admin/threshold flow must keep working even with no Supabase project reachable."""
+    monkeypatch.setattr(security, "_supabase_jwks", lambda: None)
+    monkeypatch.setattr(security.settings, "SUPABASE_JWT_SECRET", "")
+
+    assert security.require_user(_creds(security.create_token("admin-1")))["sub"] == "admin-1"
+
+
+def test_an_unverifiable_token_is_401_not_a_crash(monkeypatch):
+    monkeypatch.setattr(security, "_supabase_jwks", lambda: None)
+    monkeypatch.setattr(security.settings, "SUPABASE_JWT_SECRET", "")
+
+    with pytest.raises(HTTPException) as raised:
+        security.require_user(_creds("not-a-jwt"))
+    assert raised.value.status_code == 401
+
+
+def test_a_missing_header_is_401():
+    with pytest.raises(HTTPException) as raised:
+        security.require_user(None)
+    assert raised.value.status_code == 401
