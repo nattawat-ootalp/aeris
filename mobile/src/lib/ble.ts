@@ -102,6 +102,23 @@ export type ScanFailureReason =
   | 'cancelled'
   | 'blocked-by-policy';
 
+/**
+ * A device this app has seen before, by id, without scanning for it — the counterpart of the
+ * web build's getDevices() (src/lib/ble.web.ts). Used to reconnect to the last portable after
+ * the app (or, on the web, the page) has been restarted, so a reload does not cost the user a
+ * trip through pairing.
+ *
+ * Null when the platform has no record of it; the caller falls back to normal pairing.
+ */
+export async function findKnownPortable(deviceId: string): Promise<Device | null> {
+  try {
+    const [known] = await getManager().devices([deviceId]);
+    return known ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function scanForPortables(
   onFound: (device: Device) => void,
   onFailure: (reason: ScanFailureReason) => void,

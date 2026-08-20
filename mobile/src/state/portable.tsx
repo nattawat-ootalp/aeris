@@ -1,9 +1,11 @@
 /** Shared portable-device state (BLE connection + latest telemetry) across screens. */
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Device } from 'react-native-ble-plx';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   connectAndSubscribe,
   disconnect,
+  findKnownPortable,
   scanForPortables,
   type PortableSos,
   type PortableStatus,
@@ -43,6 +45,12 @@ const Ctx = createContext<PortableCtx | null>(null);
  *  at the firmware ring's own capacity — holding more than the device can buffer would mean
  *  holding readings that cannot exist. */
 const MAX_HELD_REPLAYS = 720;
+
+/** Which portable was connected last. Reloading the website destroys every JS object, the
+ *  connected device among them, so without a note of which device it was a refresh would leave
+ *  the user to walk back through the pairing chooser by hand. Cleared only when the user
+ *  disconnects deliberately — an unexpected drop is exactly the case worth reconnecting from. */
+const LAST_DEVICE_KEY = 'aeris.portable.last-device-id';
 
 function toIngestPayload(deviceId: string, t: PortableTelemetry, capturedAt: number) {
   return {
@@ -113,87 +121,111 @@ export function PortableProvider({ children }: { children: ReactNode }) {
     return unsubscribe;
   }, []);
 
-  const startPairing = useCallback(() => {
-    setState('scanning');
-    setScanFailure(null);
-    scanForPortables(
-      async (device) => {
-        if (deviceRef.current) return; // already connecting/connected
-        deviceRef.current = device;
-        stopScanRef.current();
-        setState('connecting');
-        setDeviceName(device.name ?? device.id);
-        setDeviceId(device.id);
-        try {
-          await connectAndSubscribe(
-            device,
-            (t) => {
-              // A replayed sample describes the air at some earlier moment, so it must not
-              // become the reading on screen — that would show the user a measurement from
-              // half an hour ago as if it were the room they are standing in. It is still
-              // real data and still belongs in the record, so it goes to the backend either way.
-              if (t.buf) {
-                queueBuffered(device.id, t);
-                return;
-              }
-              setTelemetry(t);
-              setLastSeenAt(Date.now());
-              // Queue for the backend rather than firing and forgetting: an upload that fails
-              // used to lose the sample outright. The timestamp is when the DEVICE measured it,
-              // reconstructed from its uptime counter — stamping "now" would be a lie for
-              // anything that waits in the queue, and the whole backlog would collapse onto one
-              // instant when it finally drains.
-              enqueueReading(toIngestPayload(device.id, t, clockRef.current.observeLive(t.ts)));
-              // This live frame is what anchors the clock, so anything the device replayed
-              // before it can finally be placed in time.
-              flushHeldReplays(device.id);
-            },
-            () => {
-              setState('disconnected');
-              setTelemetry(null);
-              setStatus(null);
-              setDeviceId(null);
-              deviceRef.current = null;
-              clockRef.current.reset();
-              heldReplaysRef.current = [];
-              // Whatever is still queued has nothing to do with the device being gone — push it
-              // now that the radio work has stopped competing for the connection.
-              void drainOutbox();
-            },
-            (s) => {
-              setStatus(s);
-              // Keep the registry row's firmware version current once the device reports it.
-              registerDevice({
-                external_id: device.id,
-                kind: 'portable',
-                label: device.name ?? undefined,
-                fw_version: s.fw,
-              }).catch(() => {});
-            },
-            (sos) => setLastSos(sos),
-          );
-          setState('connected');
-          // Register on connect even if the status characteristic never answers, so the
-          // device still appears in the user's device list.
+  const attachDevice = useCallback(async (device: Device) => {
+    if (deviceRef.current) return; // already connecting/connected
+    deviceRef.current = device;
+    stopScanRef.current();
+    setState('connecting');
+    setDeviceName(device.name ?? device.id);
+    setDeviceId(device.id);
+    try {
+      await connectAndSubscribe(
+        device,
+        (t) => {
+          // A replayed sample describes the air at some earlier moment, so it must not
+          // become the reading on screen — that would show the user a measurement from
+          // half an hour ago as if it were the room they are standing in. It is still
+          // real data and still belongs in the record, so it goes to the backend either way.
+          if (t.buf) {
+            queueBuffered(device.id, t);
+            return;
+          }
+          setTelemetry(t);
+          setLastSeenAt(Date.now());
+          // Queue for the backend rather than firing and forgetting: an upload that fails
+          // used to lose the sample outright. The timestamp is when the DEVICE measured it,
+          // reconstructed from its uptime counter — stamping "now" would be a lie for
+          // anything that waits in the queue, and the whole backlog would collapse onto one
+          // instant when it finally drains.
+          enqueueReading(toIngestPayload(device.id, t, clockRef.current.observeLive(t.ts)));
+          // This live frame is what anchors the clock, so anything the device replayed
+          // before it can finally be placed in time.
+          flushHeldReplays(device.id);
+        },
+        () => {
+          setState('disconnected');
+          setTelemetry(null);
+          setStatus(null);
+          setDeviceId(null);
+          deviceRef.current = null;
+          clockRef.current.reset();
+          heldReplaysRef.current = [];
+          // Whatever is still queued has nothing to do with the device being gone — push it
+          // now that the radio work has stopped competing for the connection.
+          void drainOutbox();
+        },
+        (s) => {
+          setStatus(s);
+          // Keep the registry row's firmware version current once the device reports it.
           registerDevice({
             external_id: device.id,
             kind: 'portable',
             label: device.name ?? undefined,
-          }).catch(() => {}); // best-effort; pairing must work fully offline
-        } catch {
-          setState('disconnected');
-          setDeviceId(null);
-          deviceRef.current = null;
-        }
-      },
-      (reason) => {
-        setScanFailure(reason);
-        setState('disconnected');
-      },
-    ).then((stop) => {
+            fw_version: s.fw,
+          }).catch(() => {});
+        },
+        (sos) => setLastSos(sos),
+      );
+      setState('connected');
+      // Remembered only after the connection is up: an id that never connected would send
+      // every later start into a reconnection attempt that cannot succeed.
+      void AsyncStorage.setItem(LAST_DEVICE_KEY, device.id);
+      // Register on connect even if the status characteristic never answers, so the
+      // device still appears in the user's device list.
+      registerDevice({
+        external_id: device.id,
+        kind: 'portable',
+        label: device.name ?? undefined,
+      }).catch(() => {}); // best-effort; pairing must work fully offline
+    } catch {
+      setState('disconnected');
+      setDeviceId(null);
+      deviceRef.current = null;
+    }
+  }, [queueBuffered, flushHeldReplays]);
+
+  const startPairing = useCallback(() => {
+    setState('scanning');
+    setScanFailure(null);
+    scanForPortables(attachDevice, (reason) => {
+      setScanFailure(reason);
+      setState('disconnected');
+    }).then((stop) => {
       stopScanRef.current = stop;
     });
-  }, []);
+  }, [attachDevice]);
+
+  // Reconnect to the last portable when the app starts — which on the website means after
+  // every reload. The platform only offers devices the user has already granted (Web
+  // Bluetooth's getDevices(), the OS cache on a phone), so this reconnects to a device the
+  // user chose earlier and never silently pairs a new one. When the device is out of range,
+  // switched off, or the browser cannot list it, the attempt fails and the app stays
+  // disconnected exactly as before — pairing by hand is still there.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const lastId = await AsyncStorage.getItem(LAST_DEVICE_KEY);
+      if (!lastId || cancelled || deviceRef.current) return;
+      const device = await findKnownPortable(lastId);
+      if (!device || cancelled || deviceRef.current) return;
+      await attachDevice(device);
+    })().catch(() => {
+      // Nothing to report: no reconnection is the state the app already shows.
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [attachDevice]);
 
   const clearSos = useCallback(() => setLastSos(null), []);
 
@@ -203,6 +235,9 @@ export function PortableProvider({ children }: { children: ReactNode }) {
   }, [state]);
 
   const disconnectDevice = useCallback(() => {
+    // A deliberate disconnect ends the pairing: forget the device so the next start does not
+    // reconnect to the one the user just put down.
+    void AsyncStorage.removeItem(LAST_DEVICE_KEY);
     if (deviceRef.current) disconnect(deviceRef.current);
     deviceRef.current = null;
     setState('disconnected');

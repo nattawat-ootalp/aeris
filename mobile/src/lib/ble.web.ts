@@ -87,6 +87,10 @@ export interface WebBleDevice extends EventTarget {
 interface WebBluetooth {
   requestDevice(options: { filters: { services: string[] }[] }): Promise<WebBleDevice>;
   getAvailability?: () => Promise<boolean>;
+  /** Devices this origin has already been granted, kept across reloads. Optional: it is a
+   *  later addition to the API than requestDevice, and a browser without it simply cannot
+   *  reconnect silently. */
+  getDevices?: () => Promise<WebBleDevice[]>;
 }
 
 function bluetooth(): WebBluetooth | null {
@@ -165,6 +169,27 @@ export async function scanForPortables(
   return () => {
     abandoned = true;
   };
+}
+
+/**
+ * The device this origin already has permission for, by id — or null when the browser cannot
+ * say. Reloading a page destroys every JS object, including the connected BLEDevice, so
+ * without this a refresh drops the portable and only a new trip through the chooser (which
+ * needs a click) could bring it back. `getDevices()` returns the granted devices instead, so
+ * a reload can reconnect on its own.
+ *
+ * Null covers three cases the caller treats alike: no Web Bluetooth, a browser that does not
+ * implement getDevices(), and a permission the user has since revoked.
+ */
+export async function findKnownPortable(deviceId: string): Promise<WebBleDevice | null> {
+  const ble = bluetooth();
+  if (!ble?.getDevices) return null;
+  try {
+    const devices = await ble.getDevices();
+    return devices.find((d) => d.id === deviceId) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function decode(value: DataView | undefined): Record<string, unknown> | null {
