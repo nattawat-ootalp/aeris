@@ -1,11 +1,12 @@
 /** Screen 08 — Explore / Map. Places around you, from AirSentinel nodes. */
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { getRanking } from '../../api/client';
 import { LongdoMap } from '../../components/LongdoMap';
 import { EmptyState, ErrorState, LoadingState } from '../../components/ui';
 import { freshnessLabel, isStale } from '../../lib/format';
+import { ageSeconds, useNow } from '../../lib/useNow';
 import { useMeasureStyle } from '../../lib/responsive';
 import { useRemote } from '../../lib/useRemote';
 import { colors, space, statusColor, type } from '../../theme';
@@ -16,6 +17,13 @@ type Props = NativeStackScreenProps<ExploreStackParamList, 'ExploreMap'>;
 
 export function ExploreMapScreen({ navigation }: Props) {
   const { data, loading, error, reload } = useRemote(useCallback(() => getRanking(20), []));
+  // The ranking reports each node's freshness as of the moment it was fetched; the sheet stays
+  // open long after that, so the age shown counts on from when the answer arrived.
+  const now = useNow();
+  const [fetchedAt, setFetchedAt] = useState<number | null>(null);
+  useEffect(() => {
+    if (data) setFetchedAt(Date.now());
+  }, [data]);
   // The map wants the whole canvas on a desktop; the search field and the station sheet are
   // controls, and a control stretched across a monitor is unusable — so only those are capped.
   const measure = useMeasureStyle();
@@ -80,6 +88,7 @@ export function ExploreMapScreen({ navigation }: Props) {
           {selected ? (
             <NodeSheetContent
               node={selected}
+              sinceFetchSec={ageSeconds(fetchedAt, now) ?? 0}
               onAssess={() =>
                 navigation.navigate('DestinationAssessment', {
                   name: selected.name || selected.node_code,
@@ -96,15 +105,18 @@ export function ExploreMapScreen({ navigation }: Props) {
   );
 }
 
-function NodeSheetContent({ node, onAssess }: { node: NodeMarker; onAssess: () => void }) {
-  const stale = isStale(node.freshness_sec);
+function NodeSheetContent({ node, sinceFetchSec, onAssess }: { node: NodeMarker; sinceFetchSec: number; onAssess: () => void }) {
+  // Age at fetch plus time on screen since — a node that went quiet while the sheet was open
+  // must not keep reporting the freshness it had when the list was loaded.
+  const ageSec = node.freshness_sec == null ? null : node.freshness_sec + sinceFetchSec;
+  const stale = isStale(ageSec);
   return (
     <View style={styles.sheetContent}>
       <Text style={styles.sheetTitle}>{node.name || node.node_code}</Text>
       <Text style={[styles.sheetStatus, { color: statusColor(stale ? 'No Data' : node.watch_label) }]}>
         {stale ? 'STALE' : node.watch_label} {node.pm25 != null ? `· PM2.5 ${node.pm25.toFixed(0)}` : ''}
       </Text>
-      <Text style={styles.sheetMeta}>{freshnessLabel(node.freshness_sec)}</Text>
+      <Text style={styles.sheetMeta}>{freshnessLabel(ageSec)}</Text>
       <Pressable style={styles.assessBtn} onPress={onAssess}>
         <Text style={styles.assessBtnText}>Assess this destination</Text>
       </Pressable>

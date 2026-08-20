@@ -5,15 +5,18 @@ import { getDeviceDecision, getNodeHistory } from '../../api/client';
 import { EmptyState, ErrorState, InfoCard, LoadingState, MetaRow, SectionLabel } from '../../components/ui';
 import { Screen } from '../../components/Screen';
 import { co2Label, eco2Label, freshnessLabel, tvocLabel } from '../../lib/format';
+import { ageSeconds, useNow } from '../../lib/useNow';
 import { useActiveDeviceId, withDevice } from '../../lib/device';
 import { usePortable } from '../../state/portable';
 import { colors, space, type } from '../../theme';
 import type { DecisionEvent } from '../../types';
 
 export function CurrentExposureScreen() {
-  const { telemetry, state: bleState } = usePortable();
+  const { telemetry, telemetryAt, state: bleState } = usePortable();
+  const now = useNow();
   const activeDeviceId = useActiveDeviceId();
-  const [remote, setRemote] = useState<{ loading: boolean; error?: string; decision?: DecisionEvent; series: number[] }>({
+  // `receivedAt` keeps the backend's freshness honest after it lands — see HomeScreen.
+  const [remote, setRemote] = useState<{ loading: boolean; error?: string; decision?: DecisionEvent; series: number[]; receivedAt?: number }>({
     loading: true,
     series: [],
   });
@@ -25,7 +28,7 @@ export function CurrentExposureScreen() {
         const series = history.points
           .map((p) => (typeof p.pm2_5 === 'number' ? p.pm2_5 : null))
           .filter((v): v is number => v != null);
-        setRemote({ loading: false, decision, series });
+        setRemote({ loading: false, decision, series, receivedAt: Date.now() });
       })
       .catch((e) => setRemote({ loading: false, error: String(e), series: [] }));
   }, [activeDeviceId]);
@@ -66,6 +69,7 @@ export function CurrentExposureScreen() {
 
       {telemetry ? (
         <InfoCard title="From your device">
+          <MetaRow label="Reading age" value={freshnessLabel(ageSeconds(telemetryAt, now))} />
           <MetaRow label="CO2" value={co2Label(telemetry.co2)} />
           <MetaRow label="TVOC" value={tvocLabel(telemetry.tvoc)} />
           <MetaRow label="eCO2 (estimated)" value={eco2Label(telemetry.eco2)} />
@@ -79,7 +83,14 @@ export function CurrentExposureScreen() {
 
       {remote.decision ? (
         <InfoCard title="Data quality">
-          <MetaRow label="Freshness" value={usingLocal ? 'Live from your device' : freshnessLabel(remote.decision.freshness_sec)} />
+          <MetaRow
+            label="Freshness"
+            value={
+              usingLocal
+                ? `Live from your device · ${freshnessLabel(ageSeconds(telemetryAt, now))}`
+                : freshnessLabel((remote.decision.freshness_sec ?? 0) + (ageSeconds(remote.receivedAt, now) ?? 0))
+            }
+          />
           <MetaRow label="Confidence" value={remote.decision.confidence} />
           <MetaRow label="Samples" value={`${remote.decision.sample_size}`} />
         </InfoCard>

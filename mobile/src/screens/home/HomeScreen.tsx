@@ -8,8 +8,9 @@ import { getDeviceDecision, getForecast, getRisk } from '../../api/client';
 import { Columns, InfoCard, LoadingState } from '../../components/ui';
 import { HeroStatusCard } from '../../components/WatchStatus';
 import { Screen } from '../../components/Screen';
-import { clockLabel, measuredAtLabel } from '../../lib/format';
+import { clockLabel, freshnessLabel, measuredAtLabel } from '../../lib/format';
 import { useActiveDeviceId, useThresholds, watchStatusFor, withDevice } from '../../lib/device';
+import { ageSeconds, useNow } from '../../lib/useNow';
 import { ForecastCard, RiskCard } from '../../components/RiskCards';
 import { usePortable } from '../../state/portable';
 import { colors, radius, space, statusColor, type } from '../../theme';
@@ -20,7 +21,11 @@ type Props = NativeStackScreenProps<HomeStackParamList, 'Home'>;
 
 export function HomeScreen({ navigation }: Props) {
   const { telemetry, telemetryAt, state: bleState, lastDeviceName, startPairing } = usePortable();
-  const [remote, setRemote] = useState<{ loading: boolean; error?: string; data?: DecisionEvent }>({ loading: true });
+  // `receivedAt` is kept with the data so its age can go on counting after it arrives: the
+  // backend reports how old the reading was when it answered, which stops being true the
+  // moment the answer is on screen.
+  const [remote, setRemote] = useState<{ loading: boolean; error?: string; data?: DecisionEvent; receivedAt?: number }>({ loading: true });
+  const now = useNow();
   const activeDeviceId = useActiveDeviceId();
   const thresholds = useThresholds();
   const [risk, setRisk] = useState<RiskScore | null>(null);
@@ -29,7 +34,7 @@ export function HomeScreen({ navigation }: Props) {
   const load = useCallback(() => {
     setRemote((s) => ({ ...s, loading: true }));
     withDevice(activeDeviceId, getDeviceDecision)
-      .then((data) => setRemote({ loading: false, data }))
+      .then((data) => setRemote({ loading: false, data, receivedAt: Date.now() }))
       .catch((e) => setRemote({ loading: false, error: String(e) }));
   }, [activeDeviceId]);
 
@@ -75,6 +80,15 @@ export function HomeScreen({ navigation }: Props) {
       : null
     : (remote.data?.measured_at ?? null);
 
+  // How old the reading on screen is, right now — from the device's own capture time when the
+  // portable is connected, and from the backend's freshness plus the time since it answered
+  // otherwise.
+  const ageSec = usingLocal
+    ? ageSeconds(telemetryAt, now)
+    : remote.data
+      ? (remote.data.freshness_sec ?? 0) + (ageSeconds(remote.receivedAt, now) ?? 0)
+      : null;
+
   return (
     <Screen
       title="สวัสดี"
@@ -94,12 +108,13 @@ export function HomeScreen({ navigation }: Props) {
             pm25={pm25}
             freshnessLabel={
               usingLocal
-                ? `Live from your device · ${clockLabel(measuredAt)}`
-                : measuredAtLabel(measuredAt, remote.data?.freshness_sec ?? null)
+                ? `Live from your device · ${clockLabel(measuredAt)} · ${freshnessLabel(ageSec)}`
+                : measuredAtLabel(measuredAt, ageSec)
             }
           />
 
           <InfoCard title="Sensor Readings">
+            <Text style={styles.readingAge}>{freshnessLabel(ageSec)}</Text>
             <View style={styles.sensorGrid}>
               <View style={styles.sensorItem}>
                 <Text style={styles.sensorLabel}>Temperature</Text>
@@ -207,6 +222,7 @@ const styles = StyleSheet.create({
     paddingVertical: space.md,
   },
   sosText: { ...type.bodyStrong, color: colors.high },
+  readingAge: { ...type.caption, color: colors.textMuted, marginBottom: space.sm },
   reconnectBtn: {
     flexDirection: 'row',
     alignItems: 'center',
