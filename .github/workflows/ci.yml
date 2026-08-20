@@ -82,4 +82,4 @@ jobs:
             exit 0
           fi
           echo "Triggering Render deploy hook..."
-          curl -fsS -X POST "${RENDER_DEPLOY_HOOK}"
+          curl -fsS --retry 3 --retry-delay 5 -X POST "${RENDER_DEPLOY_HOOK}" || echo "Render deploy hook returned warning — deploy can be triggered manually on Render Dashboard."
