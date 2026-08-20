@@ -5,11 +5,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { getDeviceDecision, getForecast, getRisk } from '../../api/client';
-import { Columns, InfoCard, LoadingState } from '../../components/ui';
+import { Columns, InfoCard, LoadingState, MetaRow } from '../../components/ui';
 import { HeroStatusCard } from '../../components/WatchStatus';
 import { Screen } from '../../components/Screen';
 import { clockLabel, freshnessLabel, measuredAtLabel } from '../../lib/format';
 import { useActiveDeviceId, useThresholds, watchStatusFor, withDevice } from '../../lib/device';
+import { reasonText } from '../../lib/reasons';
 import { ageSeconds, useNow } from '../../lib/useNow';
 import { ForecastCard, RiskCard } from '../../components/RiskCards';
 import { usePortable } from '../../state/portable';
@@ -160,12 +161,39 @@ export function HomeScreen({ navigation }: Props) {
           {remote.data.reason_codes.map((c) => (
             <View key={c} style={styles.reasonRow}>
               <View style={[styles.reasonDot, { backgroundColor: statusColor(status) }]} />
-              <Text style={styles.reason}>{c.replaceAll('_', ' ').toLowerCase()}</Text>
+              <Text style={styles.reason}>
+                {reasonText(c, { thresholds, sampleSize: remote.data?.sample_size, pm25 })}
+              </Text>
             </View>
           ))}
-          <View style={styles.metaFooter}>
-            <Text style={styles.metaChip}>Confidence · {remote.data.confidence}</Text>
-            <Text style={styles.metaChip}>Samples · {remote.data.sample_size}</Text>
+
+          {/* The figures the sentences above refer to. Without them the card asserts a
+              conclusion and hides its inputs; with them a reader can check the reasoning
+              against what the device is reporting right now. */}
+          <View style={styles.whyFacts}>
+            <MetaRow
+              label="PM2.5 ที่อ่านได้"
+              value={pm25 != null ? `${pm25.toFixed(0)} µg/m³` : 'No Data'}
+            />
+            {thresholds ? (
+              <MetaRow
+                label="เกณฑ์เฝ้าระวัง / สูง"
+                value={`${thresholds.pm25_caution} / ${thresholds.pm25_high} µg/m³`}
+              />
+            ) : null}
+            <MetaRow label="อายุข้อมูล" value={freshnessLabel(ageSec)} />
+            <MetaRow
+              // Named for what it counts. "Samples · 3" beside "Confidence · HIGH" read as a
+              // contradiction, because the two describe different things: how much personal
+              // history exists, and how good the reading in front of you is.
+              label="ตัวอย่างสำหรับค่าฐานส่วนตัว"
+              value={
+                thresholds
+                  ? `${remote.data.sample_size} จาก ${thresholds.baseline_min_samples}`
+                  : `${remote.data.sample_size}`
+              }
+            />
+            <MetaRow label="ความมั่นใจในค่าที่อ่านได้" value={remote.data.confidence} />
           </View>
         </InfoCard>
       ) : null}
@@ -242,6 +270,7 @@ const styles = StyleSheet.create({
   reasonDot: { width: 6, height: 6, borderRadius: 3 },
   reason: { ...type.body, color: colors.text, flex: 1 },
   metaFooter: { flexDirection: 'row', gap: space.sm, marginTop: space.md },
+  whyFacts: { marginTop: space.sm, borderTopWidth: 1, borderTopColor: colors.divider, paddingTop: space.xs },
   metaChip: { ...type.caption, color: colors.textMuted, backgroundColor: colors.bgTint, borderRadius: radius.pill, paddingVertical: 5, paddingHorizontal: space.md, overflow: 'hidden' },
   quickActions: { flexDirection: 'row', gap: space.md },
   quickBtn: { flex: 1, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, paddingVertical: space.lg, alignItems: 'center', gap: space.sm },

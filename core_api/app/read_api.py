@@ -81,6 +81,12 @@ def config_thresholds() -> dict:
         "pm25_caution": CONFIG.pm25_env_caution,
         "pm25_high": CONFIG.pm25_env_high,
         "freshness_max_age_sec": CONFIG.freshness_max_age_sec,
+        # How many of the user's own readings a personal baseline needs before it exists. The
+        # decision carries `sample_size` — how many it has — and without the target beside it
+        # that number is unreadable: "3" says nothing about whether 3 is nearly enough or
+        # nowhere near. Published for the same reason as the thresholds: so the client shows
+        # the boundary the backend actually applies rather than a copy that can drift.
+        "baseline_min_samples": CONFIG.baseline_min_samples,
     }
 
 

@@ -144,6 +144,10 @@ export interface Thresholds {
   pm25_caution: number;
   pm25_high: number;
   freshness_max_age_sec: number;
+  /** How many of the user's own readings a personal baseline needs before it exists. Served
+   *  so the app can show progress towards it instead of a bare count with nothing to judge
+   *  it against. */
+  baseline_min_samples: number;
 }
 
 export interface DeviceRecord {
