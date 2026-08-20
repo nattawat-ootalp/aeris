@@ -122,7 +122,7 @@ def resample_route(
     out: list[tuple[float, float, float]] = [(pts[0][0], pts[0][1], 0.0)]
     travelled = 0.0        # distance along the route of the last emitted sample
     cursor = 0.0           # distance along the route of `pts[i]`
-    for (lat1, lon1), (lat2, lon2) in zip(pts, pts[1:]):
+    for (lat1, lon1), (lat2, lon2) in zip(pts, pts[1:], strict=False):
         seg = haversine_m(lat1, lon1, lat2, lon2)
         if seg < _MIN_SEGMENT_M:
             continue
@@ -269,7 +269,7 @@ def summarize_parameter(
     area = 0.0            # ∫C dt over covered segments, in <unit>·seconds
     covered = 0.0
     above = 0.0
-    for (t1, v1), (t2, v2) in zip(vals, vals[1:]):
+    for (t1, v1), (t2, v2) in zip(vals, vals[1:], strict=False):
         # Consecutive in the *measured* list may still straddle a coverage hole; the sample
         # times themselves say how long the leg was, and an unmeasured stretch shows up as a
         # longer gap than the sampling interval.

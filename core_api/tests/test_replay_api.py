@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
 
-from core_api.app import repo, replay_api
+from core_api.app import replay_api, repo
 from core_api.app.destination import NodeContext
 from core_api.app.main import app
 from core_api.app.security import create_token

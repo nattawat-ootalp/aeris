@@ -1,7 +1,7 @@
 """Monitoring must never be able to break what it is monitoring."""
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
 import httpx
 from fastapi.testclient import TestClient

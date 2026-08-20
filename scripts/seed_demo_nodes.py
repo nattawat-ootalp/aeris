@@ -49,9 +49,9 @@ from datetime import UTC, datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from ingestion.app import supa, writers                      # noqa: E402
-from ingestion.app.validate import validate                  # noqa: E402
-from intelligence.models import Reading                      # noqa: E402
+from ingestion.app import supa, writers  # noqa: E402
+from ingestion.app.validate import validate  # noqa: E402
+from intelligence.models import Reading  # noqa: E402
 
 DEMO_PREFIX = "DEMO-"
 DEMO_SOURCE = "demo"

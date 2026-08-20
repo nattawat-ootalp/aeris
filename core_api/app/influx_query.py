@@ -157,7 +157,7 @@ from(bucket: "{settings.INFLUXDB_BUCKET}")
         for rec in table.records:
             dev = rec.values.get("device_id") or rec.values.get("node_id")
             value = rec.get_value()
-            if dev is None or not isinstance(value, (int, float)):
+            if dev is None or not isinstance(value, int | float):
                 continue
             out.setdefault(dev, {}).setdefault(rec.get_field(), []).append(
                 (rec.get_time(), float(value))
@@ -198,7 +198,7 @@ from(bucket: "{settings.INFLUXDB_BUCKET}")
         for rec in table.records:
             dev = rec.values.get("device_id") or rec.values.get("node_id")
             value = rec.get_value()
-            if dev is None or not isinstance(value, (int, float)):
+            if dev is None or not isinstance(value, int | float):
                 continue
             out.setdefault(dev, {}).setdefault(rec.get_field(), []).append(
                 (rec.get_time(), float(value))

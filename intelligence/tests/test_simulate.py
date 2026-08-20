@@ -33,7 +33,7 @@ def test_haversine_matches_known_distance():
 
 def test_resample_spaces_points_evenly_and_keeps_the_destination():
     pts = resample_route([SOUTH, NORTH], 100.0)
-    gaps = [b[2] - a[2] for a, b in zip(pts, pts[1:])]
+    gaps = [b[2] - a[2] for a, b in zip(pts, pts[1:], strict=False)]
     assert all(99 < g < 101 for g in gaps[:-1])          # every full interval
     assert pts[0][2] == 0.0
     # The end of the route is emitted even though it does not land on a 100 m boundary, so the

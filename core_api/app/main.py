@@ -16,10 +16,10 @@ from ingestion.app.router import router as ingestion_router
 
 from .monitor_api import router as monitor_router
 from .read_api import router as core_router
-from .telemetry_middleware import MetricsMiddleware
 from .realtime import router as ws_router
 from .replay_api import router as replay_router
 from .simulator_api import router as simulator_router
+from .telemetry_middleware import MetricsMiddleware
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
