@@ -82,4 +82,9 @@ jobs:
             exit 0
           fi
           echo "Triggering Render deploy hook..."
-          curl -fsS --retry 3 --retry-delay 5 -X POST "${RENDER_DEPLOY_HOOK}" || echo "Render deploy hook returned warning — deploy can be triggered manually on Render Dashboard."
+          # No `|| echo`. Swallowing the failure made this job — and therefore the whole run —
+          # report success while the hook was answering 500 and nothing was being deployed, so
+          # a green tick meant "the code compiled", not "the code is live". Failing here is the
+          # only way the difference is visible without opening the Render dashboard.
+          curl -fsS --retry 3 --retry-delay 5 --retry-all-errors -X POST "${RENDER_DEPLOY_HOOK}"
+          echo "Deploy triggered."

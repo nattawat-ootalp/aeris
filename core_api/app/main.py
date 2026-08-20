@@ -55,7 +55,16 @@ app.include_router(monitor_router)
 
 
 @app.get("/health", tags=["meta"])
-def health() -> dict:
+async def health() -> dict:
+    """Liveness for the platform's health check. Touches nothing and blocks on nothing.
+
+    Declared `async` deliberately. A plain `def` endpoint is dispatched to Starlette's thread
+    pool, so when every worker there is parked on a slow InfluxDB or Supabase call — which the
+    read endpoints do on ordinary requests — the health check queues behind them and times out.
+    The platform then concludes the container is dead and kills it. Answering on the event loop
+    keeps "is the process alive" independent of "is the datastore slow", which are different
+    questions with different remedies.
+    """
     # Carries the shipper's own state: monitoring that has silently stopped shipping looks
     # exactly like a system with nothing to report, and this is where the two are told apart.
     return {"status": "ok", "service": "aeris-core-api", "observability": observability.health()}

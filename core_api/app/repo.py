@@ -67,9 +67,14 @@ def get_node_contexts(now: datetime) -> list[NodeContext]:
     than in every reading it has ever sent.
     """
     nodes = supa.sb_get("nodes", {"select": "node_code,name,lat,lon,status,last_seen_at"})
+    # One query for every node, not one per node. This function is behind /dashboard/ranking,
+    # /destination/assess and /monitor/stations, all of which the app calls at startup; asking
+    # per node meant a sequential InfluxDB round trip each time, holding a worker thread for
+    # the whole fan-out while /health waited behind it.
+    latest_by_node = influx_query.latest_points([n["node_code"] for n in nodes])
     out: list[NodeContext] = []
     for n in nodes:
-        latest = influx_query.latest_point(n["node_code"])
+        latest = latest_by_node.get(n["node_code"])
         last_seen = None
         pm25 = None
         if latest:
