@@ -29,6 +29,12 @@ def _i(name: str, default: int) -> int:
 class IntelligenceConfig:
     # ── Data quality (§5.1) ──
     freshness_max_age_sec: float = _f("FRESHNESS_MAX_AGE_SEC", 120)
+    # A reading may arrive stamped slightly AHEAD of this server's clock: the phone or browser
+    # that captured it keeps its own time, and two unsynchronised clocks routinely differ by a
+    # few seconds. Treating that as "not fresh" rejected every live reading from a client whose
+    # clock ran ahead — the sample is current, the disagreement is between the clocks. Beyond
+    # this tolerance the timestamp is not skew but a claim about the future, and is refused.
+    clock_skew_tolerance_sec: float = _f("CLOCK_SKEW_TOLERANCE_SEC", 60)
     pm25_min: float = 0.0
     pm25_max: float = 1000.0            # PMS7003 saturates well below this; above = impossible
     temp_min: float = -40.0

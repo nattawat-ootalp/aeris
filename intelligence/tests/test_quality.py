@@ -73,3 +73,26 @@ def test_out_of_range_sgp30_does_not_affect_usability(now):
     q = assess_quality(make_reading(pm25=12, tvoc=99999, eco2=5), now=now)
     assert q.usable and q.pm25_valid
     assert q.reasons == []
+
+
+def test_reading_stamped_slightly_ahead_of_this_clock_is_still_fresh(now):
+    """A client's clock running a few seconds fast must not invalidate its live readings.
+
+    Two unsynchronised clocks routinely disagree by seconds, so a phone or browser can stamp a
+    capture time marginally ahead of the server's own. Before the tolerance that arrived as a
+    negative age and was rejected as DATA_STALE, which silently discarded every live reading
+    from such a client.
+    """
+    q = assess_quality(make_reading(age_sec=-3, pm25=12), now=now)
+
+    assert q.fresh and q.usable
+    assert Reason.DATA_STALE not in q.reasons
+    # Never reported as a negative age — the field means "how old", and below zero is not one.
+    assert q.freshness_sec == 0.0
+
+
+def test_a_timestamp_far_in_the_future_is_still_refused(now):
+    q = assess_quality(make_reading(age_sec=-7200, pm25=12), now=now)
+
+    assert not q.fresh
+    assert Reason.DATA_STALE in q.reasons

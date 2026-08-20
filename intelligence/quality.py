@@ -31,7 +31,10 @@ def assess_quality(
 
     # ── freshness ──
     freshness_sec = (now - reading.timestamp).total_seconds()
-    fresh = 0 <= freshness_sec <= cfg.freshness_max_age_sec
+    # Negative freshness means the reading is stamped ahead of this clock. A few seconds of
+    # that is clock skew between the capturing device and this server, not a stale reading —
+    # rejecting it threw away every live sample from a client running slightly fast.
+    fresh = -cfg.clock_skew_tolerance_sec <= freshness_sec <= cfg.freshness_max_age_sec
     if not fresh:
         reasons.append(Reason.DATA_STALE)
 
@@ -75,7 +78,10 @@ def assess_quality(
     return QualityResult(
         usable=usable,
         pm25_valid=pm25_valid,
-        freshness_sec=freshness_sec,
+        # Reported at zero rather than negative when the capturing clock ran ahead: an age
+        # below zero is not information about the air, and every consumer of this field reads
+        # it as "how old" — a negative would render as a reading from the future.
+        freshness_sec=max(0.0, freshness_sec),
         fresh=fresh,
         quality_score=quality_score,
         battery_low=battery_low,
