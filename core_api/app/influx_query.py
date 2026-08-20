@@ -95,10 +95,12 @@ from(bucket: "{settings.INFLUXDB_BUCKET}")
 def history(device_id: str, hours: int = 24) -> list[dict]:
     dev = _safe(device_id)
     hours = max(1, min(int(hours), 24 * 90))  # cap at 90 days
+    window_clause = '|> aggregateWindow(every: 15m, fn: mean, createEmpty: false)' if hours > 24 else ''
     flux = f'''
 from(bucket: "{settings.INFLUXDB_BUCKET}")
   |> range(start: -{hours}h)
   |> filter(fn: (r) => r._measurement == "air_quality" and (r.device_id == "{dev}" or r.node_id == "{dev}"))
+  {window_clause}
   |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
   |> sort(columns: ["_time"])
 '''
@@ -106,8 +108,30 @@ from(bucket: "{settings.INFLUXDB_BUCKET}")
     for table in _query_api().query(flux):
         for rec in table.records:
             row = {k: v for k, v in rec.values.items() if not k.startswith("_") or k == "_time"}
-            row["time"] = rec.get_time().isoformat()
+            if rec.get_time():
+                row["time"] = rec.get_time().isoformat()
             out.append(row)
+    return out
+
+
+def pm25_values(device_id: str, hours: int = 336) -> list[float]:
+    """Efficiently query only PM2.5 readings over a time range, with downsampling for large ranges."""
+    dev = _safe(device_id)
+    hours = max(1, min(int(hours), 24 * 90))
+    window_clause = '|> aggregateWindow(every: 15m, fn: mean, createEmpty: false)' if hours > 24 else ''
+    flux = f'''
+from(bucket: "{settings.INFLUXDB_BUCKET}")
+  |> range(start: -{hours}h)
+  |> filter(fn: (r) => r._measurement == "air_quality" and (r.device_id == "{dev}" or r.node_id == "{dev}") and r._field == "pm2_5")
+  {window_clause}
+  |> sort(columns: ["_time"])
+'''
+    out: list[float] = []
+    for table in _query_api().query(flux):
+        for rec in table.records:
+            val = rec.get_value()
+            if val is not None and isinstance(val, (int, float)):
+                out.append(float(val))
     return out
 
 

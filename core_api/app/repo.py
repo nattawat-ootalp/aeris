@@ -6,6 +6,7 @@ unit-testable and these can be monkeypatched in endpoint tests.
 from __future__ import annotations
 
 from datetime import datetime
+import time
 
 import httpx
 
@@ -15,6 +16,9 @@ from intelligence.parsing import parse_timestamp
 
 from . import analytics, influx_query
 from .destination import NodeContext
+
+_baseline_cache: dict[tuple[str, int], tuple[float, list[float]]] = {}
+_BASELINE_CACHE_TTL_SEC = 300.0  # 5 minutes in-memory cache
 
 
 def _row_to_reading(device_id: str, row: dict) -> Reading:
@@ -38,8 +42,21 @@ def get_recent_readings(device_id: str, hours: int = 6) -> list[Reading]:
 
 
 def get_baseline_values(device_id: str, days: int = 14) -> list[float]:
-    rows = influx_query.history(device_id, hours=days * 24)
-    return [r["pm2_5"] for r in rows if r.get("pm2_5") is not None]
+    now = time.time()
+    key = (device_id, days)
+    if key in _baseline_cache:
+        ts, cached_val = _baseline_cache[key]
+        if now - ts < _BASELINE_CACHE_TTL_SEC:
+            return cached_val
+
+    # Query PM2.5 specifically with downsampling rather than all fields for 14 days
+    if hasattr(influx_query, "pm25_values"):
+        values = influx_query.pm25_values(device_id, hours=days * 24)
+    else:
+        rows = influx_query.history(device_id, hours=days * 24)
+        values = [r["pm2_5"] for r in rows if r.get("pm2_5") is not None]
+    _baseline_cache[key] = (now, values)
+    return values
 
 
 def get_node_contexts(now: datetime) -> list[NodeContext]:
