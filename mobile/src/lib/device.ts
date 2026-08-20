@@ -58,16 +58,46 @@ export function withDevice<T>(deviceId: string | null, run: (id: string) => Prom
   return run(deviceId);
 }
 
+/**
+ * The backend's environmental boundaries, kept until they arrive.
+ *
+ * Every live BLE reading is labelled against these, and `watchStatusFor` below answers
+ * 'No Data' while they are missing rather than inventing a boundary. That is the right
+ * refusal, but it made a single failed fetch permanent: the request ran once at mount, a
+ * swallowed error left the value null for the rest of the session, and the home card then
+ * read NO DATA next to a perfectly good PM2.5 measurement. One cold start on the API — which
+ * sleeps when idle — was enough to do it.
+ *
+ * So it retries, with a widening gap, until it has an answer. Retrying is safe here: the
+ * endpoint is a public read of configuration, and it is the same request each time.
+ */
+const THRESHOLD_RETRY_MS = [1_000, 3_000, 8_000, 20_000, 45_000] as const;
+
 export function useThresholds(): Thresholds | null {
   const [thresholds, setThresholds] = useState<Thresholds | null>(null);
   useEffect(() => {
     let cancelled = false;
-    getThresholds()
-      .then((t) => {
-        if (!cancelled) setThresholds(t);
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const attempt = (n: number) => {
+      getThresholds()
+        .then((t) => {
+          if (!cancelled) setThresholds(t);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          // Past the last step, keep asking at the final interval — the app stays open for
+          // hours and the boundaries are worth having whenever the API comes back.
+          const wait = THRESHOLD_RETRY_MS[Math.min(n, THRESHOLD_RETRY_MS.length - 1)];
+          timer = setTimeout(() => attempt(n + 1), wait);
+        });
+    };
+
+    attempt(0);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
   }, []);
   return thresholds;
 }

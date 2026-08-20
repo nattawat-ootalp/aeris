@@ -55,6 +55,10 @@ export function HomeScreen({ navigation }: Props) {
   }, [activeDeviceId]);
 
   const usingLocal = bleState === 'connected' && telemetry != null;
+  // The device is reporting, but the boundaries that turn a number into a status have not
+  // arrived yet. Without saying so, the card reads NO DATA beside a live measurement and
+  // looks broken — the reading is fine, the yardstick is what is missing.
+  const awaitingThresholds = usingLocal && thresholds == null && telemetry?.pm25 != null;
   // A live local reading is labelled with the backend's own thresholds; an unusable PM
   // sensor stays "No Data" rather than being reported as Normal.
   const status: WatchStatus = usingLocal
@@ -108,7 +112,7 @@ export function HomeScreen({ navigation }: Props) {
             pm25={pm25}
             freshnessLabel={
               usingLocal
-                ? `Live from your device · ${clockLabel(measuredAt)} · ${freshnessLabel(ageSec)}`
+                ? `Live from your device · ${clockLabel(measuredAt)} · ${freshnessLabel(ageSec)}${awaitingThresholds ? ' · กำลังโหลดเกณฑ์จากเซิร์ฟเวอร์' : ''}`
                 : measuredAtLabel(measuredAt, ageSec)
             }
           />
