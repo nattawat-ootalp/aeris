@@ -244,6 +244,19 @@ export async function connectAndSubscribe(
     return char;
   }
 
+  // Telemetry first, and read before subscribing to anything optional. The firmware notifies
+  // every 5 s but keeps the latest reading readable between notifications, so reading it here
+  // puts a value on screen at once instead of leaving the card empty for up to a full
+  // interval — and doing it before the status and SOS handshakes keeps those from adding
+  // their own round trips to that wait.
+  const telemetryChar = await subscribe(CHAR_TELEMETRY_UUID, (p) => onTelemetry(p as unknown as PortableTelemetry));
+  try {
+    const current = decode(await telemetryChar.readValue());
+    if (current) onTelemetry(current as unknown as PortableTelemetry);
+  } catch {
+    /* older firmware may not allow reads — the next notification carries the same reading */
+  }
+
   if (onStatus) {
     // Read once so the firmware version is known immediately, then follow notifications.
     // Optional characteristic — its absence is not an error.
@@ -265,8 +278,6 @@ export async function connectAndSubscribe(
       /* not implemented by this firmware build */
     }
   }
-
-  await subscribe(CHAR_TELEMETRY_UUID, (p) => onTelemetry(p as unknown as PortableTelemetry));
 
   return {
     remove: () => {

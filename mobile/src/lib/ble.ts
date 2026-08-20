@@ -212,12 +212,25 @@ export async function connectAndSubscribe(
     });
   }
 
-  return connected.monitorCharacteristicForService(SERVICE_UUID, CHAR_TELEMETRY_UUID, (error, char) => {
+  const telemetry = connected.monitorCharacteristicForService(SERVICE_UUID, CHAR_TELEMETRY_UUID, (error, char) => {
     if (error || !char) return;
     const parsed = decode(char.value);
     if (!parsed) return;
     onTelemetry(parsed as unknown as PortableTelemetry);
   });
+
+  // The firmware notifies every 5 s and keeps the latest reading readable in between, so read
+  // it once here: without this the card stays empty for up to a full interval after connecting,
+  // for a reading the device already has.
+  connected
+    .readCharacteristicForService(SERVICE_UUID, CHAR_TELEMETRY_UUID)
+    .then((char) => {
+      const parsed = decode(char.value);
+      if (parsed) onTelemetry(parsed as unknown as PortableTelemetry);
+    })
+    .catch(() => {}); // older firmware may not allow reads; the next notification carries it
+
+  return telemetry;
 }
 
 export function disconnect(device: Device) {

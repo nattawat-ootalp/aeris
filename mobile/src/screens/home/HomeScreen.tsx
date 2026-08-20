@@ -19,7 +19,7 @@ import type { HomeStackParamList } from '../../navigation/types';
 type Props = NativeStackScreenProps<HomeStackParamList, 'Home'>;
 
 export function HomeScreen({ navigation }: Props) {
-  const { telemetry, state: bleState } = usePortable();
+  const { telemetry, telemetryAt, state: bleState, lastDeviceName, startPairing } = usePortable();
   const [remote, setRemote] = useState<{ loading: boolean; error?: string; data?: DecisionEvent }>({ loading: true });
   const activeDeviceId = useActiveDeviceId();
   const thresholds = useThresholds();
@@ -65,11 +65,13 @@ export function HomeScreen({ navigation }: Props) {
   // it is — the estimate is never presented as the measurement.
   const co2 = usingLocal ? telemetry?.co2 : remote.data?.co2;
   const eco2 = usingLocal ? telemetry?.eco2 : remote.data?.eco2;
-  // A live BLE frame stamps its own device clock (`ts`, epoch seconds); a backend reading
-  // carries the time it was recorded.
+  // A live BLE frame carries the device's UPTIME, not a date — the portable has no clock. The
+  // provider pairs it with the phone's clock (src/lib/deviceClock.ts) and hands back the real
+  // capture time; reading `telemetry.ts` as an epoch printed a time in 1970 (an eight-hour
+  // uptime showed as "07:24 AM"). A backend reading already carries the time it was recorded.
   const measuredAt = usingLocal
-    ? telemetry?.ts
-      ? new Date(telemetry.ts * 1000).toISOString()
+    ? telemetryAt != null
+      ? new Date(telemetryAt).toISOString()
       : null
     : (remote.data?.measured_at ?? null);
 
@@ -154,6 +156,16 @@ export function HomeScreen({ navigation }: Props) {
         <ForecastCard forecast={forecast} />
       </Columns>
 
+      {bleState === 'disconnected' && lastDeviceName ? (
+        // Reloading a page drops the Bluetooth connection, and a browser will not hand it back
+        // without a click. One tap here reopens the chooser on the device already paired,
+        // rather than sending the user back through Profile → Pair sensor.
+        <Pressable onPress={startPairing} style={({ pressed }) => [styles.reconnectBtn, pressed ? { opacity: 0.85 } : null]}>
+          <Ionicons name="bluetooth-outline" size={20} color={colors.primary} />
+          <Text style={styles.reconnectText}>เชื่อมต่อ {lastDeviceName} อีกครั้ง</Text>
+        </Pressable>
+      ) : null}
+
       <Pressable
         onPress={() => navigation.getParent()?.navigate('Sos' as never)}
         style={({ pressed }) => [styles.sosBtn, pressed ? { opacity: 0.85 } : null]}
@@ -195,6 +207,16 @@ const styles = StyleSheet.create({
     paddingVertical: space.md,
   },
   sosText: { ...type.bodyStrong, color: colors.high },
+  reconnectBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: space.sm,
+    backgroundColor: colors.primarySoft,
+    borderRadius: radius.lg,
+    paddingVertical: space.md,
+  },
+  reconnectText: { ...type.bodyStrong, color: colors.primary },
   bellBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   reasonRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: 3 },
   reasonDot: { width: 6, height: 6, borderRadius: 3 },
