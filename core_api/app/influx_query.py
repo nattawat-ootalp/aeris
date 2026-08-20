@@ -130,7 +130,7 @@ from(bucket: "{settings.INFLUXDB_BUCKET}")
     for table in _query_api().query(flux):
         for rec in table.records:
             val = rec.get_value()
-            if val is not None and isinstance(val, (int, float)):
+            if val is not None and isinstance(val, int | float):
                 out.append(float(val))
     return out
 

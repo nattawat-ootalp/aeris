@@ -5,8 +5,8 @@ unit-testable and these can be monkeypatched in endpoint tests.
 """
 from __future__ import annotations
 
-from datetime import datetime
 import time
+from datetime import datetime
 
 import httpx
 
