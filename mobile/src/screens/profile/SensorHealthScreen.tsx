@@ -7,7 +7,7 @@ import { usePortable } from '../../state/portable';
 import { colors, space, type } from '../../theme';
 
 export function SensorHealthScreen() {
-  const { state, telemetry, status, lastSeenAt, outbox } = usePortable();
+  const { state, telemetry, status, lastSeenAt, outbox, deviceId } = usePortable();
   const connected = state === 'connected';
   const lastSyncSec = lastSeenAt != null ? (Date.now() - lastSeenAt) / 1000 : null;
   // The VOC chip reports its own health; `sensor_status` covers the PM sensor only, so the
@@ -25,6 +25,10 @@ export function SensorHealthScreen() {
 
   const rows: { label: string; value: string; ok: boolean }[] = [
     { label: 'Connection', value: connected ? 'Connected' : 'Not connected', ok: connected },
+    // The id every reading is filed under. Shown because it is the one thing needed to tell
+    // "the device is not sending" apart from "it is sending, under a name you are not looking
+    // at" — and on the web it is issued by the browser, so it is not guessable.
+    { label: 'Recorded as', value: deviceId ?? 'No Data', ok: deviceId != null },
     {
       label: 'Battery',
       value: telemetry?.battery != null ? `${telemetry.battery}%` : 'No Data',
