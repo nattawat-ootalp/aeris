@@ -42,6 +42,14 @@ class Settings:
     JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
     JWT_EXPIRE_HOURS: int = int(os.getenv("JWT_EXPIRE_HOURS", "12"))
     CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
+    # The website is one app served from several addresses: the production domain, the
+    # per-branch alias, and a fresh preview URL for every deployment. An exact allow-list can
+    # only ever name the first, so opening any of the others left the browser blocking every
+    # API call while the page itself loaded fine — which reads as the API being down.
+    # Matches this project's own Vercel deployments and nothing else.
+    CORS_ORIGIN_REGEX: str = os.getenv(
+        "CORS_ORIGIN_REGEX", r"https://aeris-web-nextair[a-z0-9-]*\.vercel\.app"
+    )
 
     # ── Ingestion security ──
     # HMAC secret for the HiveMQ webhook. Empty = dev mode (accept + warn), never in prod.

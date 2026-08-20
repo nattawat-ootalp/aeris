@@ -41,6 +41,10 @@ app.add_middleware(MetricsMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
+    # Named origins cover localhost and the production domain; the regex covers the same app
+    # served from a preview or branch URL, which Vercel mints per deployment and which an
+    # exact list can never contain. Without it those pages load and then fail every request.
+    allow_origin_regex=settings.CORS_ORIGIN_REGEX or None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
