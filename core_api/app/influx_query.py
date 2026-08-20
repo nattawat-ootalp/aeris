@@ -133,10 +133,29 @@ from(bucket: "{settings.INFLUXDB_BUCKET}")
     return out
 
 
+# The measured quantities an averaged window is meaningful for. A range longer than a day is
+# downsampled to keep the response bounded, and a mean is only defined over numbers: the bucket
+# also carries non-numeric fields (the station path writes `pm25_valid` as a boolean), and
+# averaging the lot made InfluxDB refuse the whole query —
+# "Avg does not support inputs of type Boolean" — which surfaced as a 500 on /weekly and
+# /pattern. Restricting the aggregate to these fields is also exactly what a Reading is built
+# from (repo._row_to_reading), so nothing downstream loses a value it was reading.
+_AVERAGEABLE_FIELDS = (
+    "pm2_5", "pm10", "temperature", "humidity", "battery", "quality_score", "tvoc", "co2", "eco2",
+)
+
+
 def history(device_id: str, hours: int = 24) -> list[dict]:
     dev = _safe(device_id)
     hours = max(1, min(int(hours), 24 * 90))  # cap at 90 days
-    window_clause = '|> aggregateWindow(every: 15m, fn: mean, createEmpty: false)' if hours > 24 else ''
+    if hours > 24:
+        numeric = " or ".join(f'r._field == "{f}"' for f in _AVERAGEABLE_FIELDS)
+        window_clause = (
+            f'|> filter(fn: (r) => {numeric})\n'
+            '  |> aggregateWindow(every: 15m, fn: mean, createEmpty: false)'
+        )
+    else:
+        window_clause = ''
     flux = f'''
 from(bucket: "{settings.INFLUXDB_BUCKET}")
   |> range(start: -{hours}h)
