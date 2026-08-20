@@ -13,13 +13,12 @@ from influxdb_client import InfluxDBClient
 from ingestion.app.config import settings
 
 _client: InfluxDBClient | None = None
-# Characters allowed inside an interpolated Flux string literal. Colons and dots are here
-# because a paired portable's id is its BLE identifier — a MAC address on Android
-# (14:C1:9F:C1:25:F5) and a UUID on iOS. Stripping the colons silently rewrote the id, so
-# every device-scoped query looked for a device that had never written a point, and the app
-# showed No Data while the readings sat in the bucket under the real id.
-# Quotes and backslashes stay excluded: those are what could break out of the literal.
-_SAFE = re.compile(r"[^A-Za-z0-9_\-:.]")
+# Control characters are the only thing removed before a value is interpolated into a Flux
+# string literal — they cannot appear in one at all. Everything else is escaped instead, by
+# _safe() below; an allow-list here twice rewrote real device ids into ids nothing had ever
+# written under (first BLE MAC colons, then base64 padding), and each time the app reported
+# No Data for a device that was reporting fine.
+_FLUX_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 
 
 def _query_api():
@@ -32,8 +31,20 @@ def _query_api():
 
 
 def _safe(code: str) -> str:
-    """Strip anything that isn't identifier-safe before putting it in a Flux string."""
-    return _SAFE.sub("", code or "")
+    """Escape a value for a Flux string literal, without changing what the value is.
+
+    A device id is chosen by the platform that issued it, not by us: a MAC address on Android,
+    a UUID on iOS, and base64 in a browser — ``pvoEdP6l3oM_SflZ3KFiPQ==``. The previous
+    allow-list dropped that trailing padding, so the query asked about an id that had never
+    written a point while the readings sat under the real one, and every device-scoped screen
+    reported No Data for a device that was reporting fine.
+
+    Injection safety comes from escaping rather than from deleting: a Flux string literal ends
+    at an unescaped quote, so quotes and backslashes are escaped and the literal stays one
+    literal whatever the id contains.
+    """
+    literal = _FLUX_CONTROL.sub("", code or "")
+    return literal.replace("\\", "\\\\").replace('"', '\\"')
 
 
 # How far apart two fields may be and still be reported as one reading. A device writes its
