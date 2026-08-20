@@ -51,8 +51,40 @@ export class ApiError extends Error {
   }
 }
 
+/** The API runs on an instance that sleeps when idle, so the first request after a quiet
+ *  period wakes it and can take most of a minute. `fetch` has no timeout of its own, and a
+ *  request that never settles reads on screen as an endless spinner — so every call gets a
+ *  ceiling, and reads (which change nothing) get one retry across it. Writes are never
+ *  retried: a repeated POST could file a second SOS or a second symptom entry. */
+const TIMEOUT_MS = 45_000;
+const RETRY_DELAY_MS = 1_500;
+
+async function fetchWithTimeout(url: string, init?: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** A read, retried once. Only the failures a waking or overloaded instance produces are
+ *  retried — a transport error, a timeout, or a gateway status. A 4xx is the server answering
+ *  and is passed straight back, so a real 401 still surfaces as one. */
+async function fetchRead(url: string, init?: RequestInit): Promise<Response> {
+  try {
+    const res = await fetchWithTimeout(url, init);
+    if (res.status !== 502 && res.status !== 503 && res.status !== 504) return res;
+  } catch (e) {
+    // Transport failure or the abort above; both are retried once below.
+  }
+  await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+  return fetchWithTimeout(url, init);
+}
+
 async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`);
+  const res = await fetchRead(`${BASE_URL}${path}`);
   if (!res.ok) throw new ApiError(res.status, `GET ${path} -> ${res.status}`);
   return (await res.json()) as T;
 }
@@ -60,7 +92,7 @@ async function getJson<T>(path: string): Promise<T> {
 /** Unauthenticated POST. Used only by the exposure simulator, which reads public station
  *  data and writes nothing — saving a run goes through postJsonAuthed instead. */
 async function postJson<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await fetchWithTimeout(`${BASE_URL}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -71,7 +103,7 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
 
 async function getJsonAuthed<T>(path: string): Promise<T> {
   const token = await ensureSessionToken();
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await fetchRead(`${BASE_URL}${path}`, {
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
@@ -82,7 +114,7 @@ async function getJsonAuthed<T>(path: string): Promise<T> {
 
 async function sendJsonAuthed<T>(method: 'POST' | 'PUT', path: string, body: unknown): Promise<T> {
   const token = await ensureSessionToken();
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await fetchWithTimeout(`${BASE_URL}${path}`, {
     method,
     headers: {
       'Content-Type': 'application/json',
@@ -100,7 +132,7 @@ async function postJsonAuthed<T>(path: string, body: unknown): Promise<T> {
 
 async function deleteAuthed<T>(path: string): Promise<T> {
   const token = await ensureSessionToken();
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await fetchWithTimeout(`${BASE_URL}${path}`, {
     method: 'DELETE',
     headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
   });

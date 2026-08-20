@@ -21,19 +21,33 @@ writing a separate web app.
 
 | Concern | On device | On web | Where |
 | --- | --- | --- | --- |
-| BLE pairing to the portable | `react-native-ble-plx` | Stubbed — reports "not connected", never claims a device | `src/lib/ble.web.ts` |
-| Longdo map | WebView | Longdo JS SDK in an iframe | `src/components/LongdoMap.web.tsx` |
+| BLE pairing to the portable | `react-native-ble-plx` | Web Bluetooth — same GATT contract, one device per chooser | `src/lib/ble.web.ts` |
+| Station map | WebView | Longdo JS SDK loaded into the page | `src/components/LongdoMap.web.tsx` |
+| Route heat map | WebView | Same SDK, polylines drawn in the page | `src/components/RouteMap.web.tsx` |
 | Screen addresses | `aeris://` deep links | Real URLs (`/history/baseline`) | `src/navigation/linking.ts` |
 | Layout on a large screen | n/a | Centred 460 px app frame; full-bleed under 700 px | `mobile/public/index.html` |
 
-The BLE stub is the one real capability gap, and it is deliberate: Web Bluetooth cannot run in
-the background, is unavailable in Safari and Firefox, and requires a user gesture per
-connection. Rather than half-support it, the web build reports **No Data** for the portable —
-which is the honest state, and the one the UI is already built to show (TDD §6/§14). Station
-data over the API is unaffected, so everything that does not depend on a paired portable works
-identically in a browser.
+Pairing is the one place the platform still decides what is possible. Web Bluetooth is
+implemented by Chrome and Edge on desktop and Android, and not at all by Safari or Firefox, so
+on an iPhone the pairing screen says so and the portable reports **No Data** — the honest
+state, and the one the UI is already built to show (TDD §6/§14). Station data over the API is
+unaffected, so everything that does not depend on a paired portable works in any browser.
 
 Nothing else is forked. There is no web-only screen, no web-only copy, and no sample data.
+
+### The map key must allow the site's domain
+
+The Longdo key is issued per domain. A key whose allow-list does not contain the deployed
+host still returns HTTP 200 for the SDK, but the script throws `Longdo Map API Key Error`
+instead of defining `window.longdo` — the map then never appears and the screen falls back to
+its "could not load the map" notice. Add every host the site is served from (the production
+domain, any preview domain, and `localhost` for development) in the Longdo console. To check a
+host without opening a browser:
+
+```bash
+curl -s -H "Referer: https://YOUR-DOMAIN/" "https://api.longdo.com/map/?key=YOUR_KEY" | head -c 60
+# a working key starts with the SDK source; a blocked one is: throw 'Longdo Map API Key Error';
+```
 
 ---
 

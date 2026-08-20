@@ -1,7 +1,7 @@
 /** Screen 08 — Explore / Map. Places around you, from AirSentinel nodes. */
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { getRanking } from '../../api/client';
 import { LongdoMap } from '../../components/LongdoMap';
 import { EmptyState, ErrorState, LoadingState } from '../../components/ui';
@@ -19,6 +19,8 @@ export function ExploreMapScreen({ navigation }: Props) {
   // The map wants the whole canvas on a desktop; the search field and the station sheet are
   // controls, and a control stretched across a monitor is unusable — so only those are capped.
   const measure = useMeasureStyle();
+  // The sheet is capped so a long node list cannot eat the map, and scrolls inside that cap.
+  const { height } = useWindowDimensions();
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [query, setQuery] = useState('');
 
@@ -59,8 +61,8 @@ export function ExploreMapScreen({ navigation }: Props) {
       </View>
 
       {matches.length > 0 ? (
-        <View style={styles.sheet}>
-          <View style={[styles.sheetInner, measure]}>
+        <View style={[styles.sheet, { maxHeight: height * 0.45 }]}>
+          <ScrollView contentContainerStyle={[styles.sheetInner, measure]} showsVerticalScrollIndicator={false}>
           <View style={styles.sheetHandle} />
           {matches.length > 1 ? (
             <View style={styles.pickRow}>
@@ -87,7 +89,7 @@ export function ExploreMapScreen({ navigation }: Props) {
               }
             />
           ) : null}
-          </View>
+          </ScrollView>
         </View>
       ) : null}
     </View>

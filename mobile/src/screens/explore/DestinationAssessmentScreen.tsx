@@ -1,7 +1,7 @@
 /** Screen 09 — Destination Assessment. Evaluate a place before you travel there. */
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { assessDestination } from '../../api/client';
 import { InfoCard, LoadingState, MetaRow, SecondaryButton } from '../../components/ui';
 import { HeroStatusCard } from '../../components/WatchStatus';
@@ -26,7 +26,7 @@ export function DestinationAssessmentScreen({ route, navigation }: Props) {
   }, [lat, lon]);
 
   return (
-    <View style={[styles.root, measure]}>
+    <ScrollView style={styles.root} contentContainerStyle={[styles.content, measure]} showsVerticalScrollIndicator={false}>
       <Text style={styles.title}>{name}</Text>
       {state.loading ? (
         <LoadingState />
@@ -56,7 +56,7 @@ export function DestinationAssessmentScreen({ route, navigation }: Props) {
         </>
       )}
       <SecondaryButton label="Compare locations" onPress={() => navigation.navigate('CompareLocations')} />
-    </View>
+    </ScrollView>
   );
 }
 
@@ -68,7 +68,8 @@ function statusLine(a: DestinationAssessment): string {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.bg, padding: space.lg, paddingTop: space.xl, gap: space.md },
+  root: { flex: 1, backgroundColor: colors.bg },
+  content: { padding: space.lg, paddingTop: space.xl, paddingBottom: space.xxl, gap: space.md },
   title: { ...type.h1, color: colors.text },
   reasons: { gap: 4 },
   reason: { ...type.body, color: colors.text },

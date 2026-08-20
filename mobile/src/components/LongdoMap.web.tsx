@@ -2,68 +2,17 @@
  * Longdo Map in the browser. The native file (src/components/LongdoMap.tsx) hosts the same map
  * inside a WebView because react-native-webview has no web build — but a browser needs no
  * WebView, it already is one, so here the Longdo script is loaded into the page itself and the
- * map is mounted straight into the view's own DOM node.
+ * map is mounted straight into the view's own DOM node. The SDK loader itself lives in
+ * src/lib/longdo.ts, shared with the route map (src/components/RouteMap.web.tsx).
  *
  * The result matches the native one deliberately: same zoom, same centring rule, same coloured
  * dot per node, so the map a phone shows and the map a desktop shows are the same map.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { LONGDO_KEY, loadLongdoSdk, type LongdoMapInstance } from '../lib/longdo';
 import type { NodeMarker } from '../types';
 import { colors, space, statusColor, type } from '../theme';
-
-// Supplied at build time. There is deliberately no fallback value: a placeholder key loads a
-// map that fails silently but still looks real, so an unconfigured key renders a notice instead.
-const LONGDO_KEY = process.env.EXPO_PUBLIC_LONGDO_KEY || '';
-
-interface LongdoMapInstance {
-  zoom(level: number): void;
-  location(point: { lon: number; lat: number }, animate?: boolean): void;
-  Overlays: { add(overlay: unknown): void; clear(): void };
-}
-interface LongdoGlobal {
-  Map: new (options: { placeholder: HTMLElement }) => LongdoMapInstance;
-  Marker: new (
-    point: { lon: number; lat: number },
-    options: { title: string; icon: { html: string } },
-  ) => unknown;
-}
-
-function longdoGlobal(): LongdoGlobal | null {
-  return (window as unknown as { longdo?: LongdoGlobal }).longdo ?? null;
-}
-
-/**
- * Load the Longdo SDK once per document. Every mount awaits the same promise, so navigating
- * between screens neither appends the script again nor races a half-initialised global.
- */
-let sdk: Promise<LongdoGlobal> | null = null;
-function loadSdk(): Promise<LongdoGlobal> {
-  if (sdk) return sdk;
-  sdk = new Promise<LongdoGlobal>((resolve, reject) => {
-    const existing = longdoGlobal();
-    if (existing) {
-      resolve(existing);
-      return;
-    }
-    const script = document.createElement('script');
-    // api.longdo.com is the map SDK itself rather than a configurable backend, which is why the
-    // no-hardcode build guard allows this one host. Only the key comes from the environment.
-    script.src = `https://api.longdo.com/map/?key=${encodeURIComponent(LONGDO_KEY)}`;
-    script.async = true;
-    script.onload = () => {
-      const g = longdoGlobal();
-      if (g) resolve(g);
-      else reject(new Error('Longdo SDK loaded but exposed no global'));
-    };
-    script.onerror = () => reject(new Error('Longdo SDK failed to load'));
-    document.head.appendChild(script);
-  }).catch((e) => {
-    sdk = null; // let a later mount retry instead of caching the failure forever
-    throw e;
-  });
-  return sdk;
-}
 
 export function LongdoMap({ markers, center = null }: { markers: NodeMarker[]; center?: { lat: number; lon: number } | null }) {
   // react-native-web renders View as a div, so this ref is the DOM node Longdo mounts into.
@@ -81,7 +30,7 @@ export function LongdoMap({ markers, center = null }: { markers: NodeMarker[]; c
   useEffect(() => {
     if (!LONGDO_KEY) return;
     let cancelled = false;
-    loadSdk()
+    loadLongdoSdk()
       .then((longdo) => {
         const node = holder.current as unknown as HTMLElement | null;
         if (cancelled || !node) return;
