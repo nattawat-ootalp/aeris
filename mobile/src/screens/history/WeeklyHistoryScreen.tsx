@@ -4,6 +4,7 @@ import { useCallback } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { getWeeklyHistory } from '../../api/client';
 import { EmptyState, ErrorState, InfoCard, LoadingState, SectionLabel } from '../../components/ui';
+import { SignInRequired } from '../../components/SignInRequired';
 import { Screen } from '../../components/Screen';
 import { useActiveDeviceId, withDevice } from '../../lib/device';
 import { useRemote } from '../../lib/useRemote';
@@ -29,7 +30,7 @@ export function WeeklyHistoryScreen({ navigation }: Props) {
       {loading ? (
         <LoadingState />
       ) : error ? (
-        unauthenticated ? <EmptyState title="ยังเชื่อมต่อบัญชีไม่ได้ — ข้อมูลส่วนตัวต้องลงชื่อเข้าใช้ก่อน" /> : noDevice ? <EmptyState title="ยังไม่มีอุปกรณ์สำหรับแสดงข้อมูล" /> : <ErrorState reason="Could not load your history" onRetry={reload} />
+        unauthenticated ? <SignInRequired /> : noDevice ? <EmptyState title="ยังไม่มีอุปกรณ์สำหรับแสดงข้อมูล" /> : <ErrorState reason="Could not load your history" onRetry={reload} />
       ) : !hasAny ? (
         <EmptyState title="ยังไม่มีข้อมูลย้อนหลังเพียงพอ" />
       ) : (

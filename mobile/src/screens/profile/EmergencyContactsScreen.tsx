@@ -9,6 +9,7 @@ import { useCallback, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { addContact, deleteContact, getContacts } from '../../api/client';
 import { EmptyState, ErrorState, InfoCard, LoadingState, PrimaryButton } from '../../components/ui';
+import { SignInRequired } from '../../components/SignInRequired';
 import { Screen } from '../../components/Screen';
 import { useRemote } from '../../lib/useRemote';
 import { colors, radius, space, type } from '../../theme';
@@ -69,7 +70,7 @@ export function EmergencyContactsScreen() {
       {loading ? (
         <LoadingState />
       ) : error || !data ? (
-        unauthenticated ? <EmptyState title="ยังเชื่อมต่อบัญชีไม่ได้ — ข้อมูลส่วนตัวต้องลงชื่อเข้าใช้ก่อน" /> : <ErrorState reason="Could not load your contacts" onRetry={reload} />
+        unauthenticated ? <SignInRequired /> : <ErrorState reason="Could not load your contacts" onRetry={reload} />
       ) : data.contacts.length === 0 ? (
         <EmptyState title="ยังไม่ได้เพิ่มผู้ติดต่อ" />
       ) : (

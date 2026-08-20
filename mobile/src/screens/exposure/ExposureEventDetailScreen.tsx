@@ -4,6 +4,7 @@ import { useCallback } from 'react';
 import { StyleSheet, Text } from 'react-native';
 import { getExposureEvent } from '../../api/client';
 import { EmptyState, ErrorState, InfoCard, LoadingState, MetaRow } from '../../components/ui';
+import { SignInRequired } from '../../components/SignInRequired';
 import { Screen } from '../../components/Screen';
 import { clockLabel, co2Label, durationLabel, eco2Label, tvocLabel, valueLabel } from '../../lib/format';
 import { useActiveDeviceId, withDevice } from '../../lib/device';
@@ -30,7 +31,7 @@ export function ExposureEventDetailScreen({ route }: Props) {
   if (error || !data) {
     return (
       <Screen title="Exposure period">
-        {unauthenticated ? <EmptyState title="ยังเชื่อมต่อบัญชีไม่ได้ — ข้อมูลส่วนตัวต้องลงชื่อเข้าใช้ก่อน" /> : noDevice ? <EmptyState title="ยังไม่มีอุปกรณ์สำหรับแสดงข้อมูล" /> : <ErrorState reason="This period is no longer in the current window" onRetry={reload} />}
+        {unauthenticated ? <SignInRequired /> : noDevice ? <EmptyState title="ยังไม่มีอุปกรณ์สำหรับแสดงข้อมูล" /> : <ErrorState reason="This period is no longer in the current window" onRetry={reload} />}
       </Screen>
     );
   }

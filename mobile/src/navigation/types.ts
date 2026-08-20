@@ -41,6 +41,8 @@ export type DashboardStackParamList = {
 
 export type ProfileStackParamList = {
   ProfileSettings: undefined;
+  Account: undefined;
+  SignIn: undefined;
   SensorHealth: undefined;
   Privacy: undefined;
   PairSensor: undefined;

@@ -3,6 +3,7 @@ import { useCallback } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { getDataQuality } from '../../api/client';
 import { EmptyState, ErrorState, InfoCard, LoadingState, MetaRow, SectionLabel } from '../../components/ui';
+import { SignInRequired } from '../../components/SignInRequired';
 import { Screen } from '../../components/Screen';
 import { freshnessLabel } from '../../lib/format';
 import { useActiveDeviceId, withDevice } from '../../lib/device';
@@ -54,7 +55,7 @@ export function DataQualityScreen() {
       {loading ? (
         <LoadingState />
       ) : error || !data ? (
-        unauthenticated ? <EmptyState title="ยังเชื่อมต่อบัญชีไม่ได้ — ข้อมูลส่วนตัวต้องลงชื่อเข้าใช้ก่อน" /> : noDevice ? <EmptyState title="ยังไม่มีอุปกรณ์สำหรับแสดงข้อมูล" /> : <ErrorState reason="Could not load data quality" onRetry={reload} />
+        unauthenticated ? <SignInRequired /> : noDevice ? <EmptyState title="ยังไม่มีอุปกรณ์สำหรับแสดงข้อมูล" /> : <ErrorState reason="Could not load data quality" onRetry={reload} />
       ) : !data.has_data ? (
         <EmptyState title="No readings available for this device" />
       ) : (

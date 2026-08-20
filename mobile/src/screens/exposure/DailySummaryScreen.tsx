@@ -3,6 +3,7 @@ import { useCallback } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { getDailySummary } from '../../api/client';
 import { EmptyState, ErrorState, InfoCard, LoadingState } from '../../components/ui';
+import { SignInRequired } from '../../components/SignInRequired';
 import { Screen } from '../../components/Screen';
 import { clockLabel, valueLabel } from '../../lib/format';
 import { useActiveDeviceId, withDevice } from '../../lib/device';
@@ -25,7 +26,7 @@ export function DailySummaryScreen() {
   if (error || !data) {
     return (
       <Screen title="Today" subtitle="สรุป exposure วันนี้">
-        {unauthenticated ? <EmptyState title="ยังเชื่อมต่อบัญชีไม่ได้ — ข้อมูลส่วนตัวต้องลงชื่อเข้าใช้ก่อน" /> : noDevice ? <EmptyState title="ยังไม่มีอุปกรณ์สำหรับแสดงข้อมูล" /> : <ErrorState reason="Could not load today's summary" onRetry={reload} />}
+        {unauthenticated ? <SignInRequired /> : noDevice ? <EmptyState title="ยังไม่มีอุปกรณ์สำหรับแสดงข้อมูล" /> : <ErrorState reason="Could not load today's summary" onRetry={reload} />}
       </Screen>
     );
   }

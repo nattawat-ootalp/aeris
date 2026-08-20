@@ -4,6 +4,7 @@ import { useCallback } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { getExposureTimeline } from '../../api/client';
 import { EmptyState, ErrorState, LoadingState } from '../../components/ui';
+import { SignInRequired } from '../../components/SignInRequired';
 import { Screen } from '../../components/Screen';
 import { clockLabel, durationLabel } from '../../lib/format';
 import { useActiveDeviceId, withDevice } from '../../lib/device';
@@ -34,7 +35,7 @@ export function ExposureTimelineScreen({ navigation }: Props) {
       {loading ? (
         <LoadingState />
       ) : error ? (
-        unauthenticated ? <EmptyState title="ยังเชื่อมต่อบัญชีไม่ได้ — ข้อมูลส่วนตัวต้องลงชื่อเข้าใช้ก่อน" /> : noDevice ? <EmptyState title="ยังไม่มีอุปกรณ์สำหรับแสดงข้อมูล" /> : <ErrorState reason="Could not load your timeline" onRetry={reload} />
+        unauthenticated ? <SignInRequired /> : noDevice ? <EmptyState title="ยังไม่มีอุปกรณ์สำหรับแสดงข้อมูล" /> : <ErrorState reason="Could not load your timeline" onRetry={reload} />
       ) : (
         <FlatList
           data={events}

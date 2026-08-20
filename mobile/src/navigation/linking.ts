@@ -48,6 +48,8 @@ const DOCUMENT_TITLES: Record<string, string> = {
   PersonalBaseline: 'ค่าฐานส่วนบุคคล',
   PersonalPattern: 'รูปแบบส่วนบุคคล',
   ProfileSettings: 'โปรไฟล์',
+  Account: 'บัญชี',
+  SignIn: 'ลงชื่อเข้าใช้',
   SensorHealth: 'สถานะเซนเซอร์',
   Privacy: 'ความเป็นส่วนตัว',
   PairSensor: 'จับคู่อุปกรณ์',
@@ -124,6 +126,8 @@ export const linking: LinkingOptions<RootStackParamList> = {
           ProfileTab: {
             screens: {
               ProfileSettings: 'profile',
+              Account: 'profile/account',
+              SignIn: 'profile/sign-in',
               SensorHealth: 'profile/sensor-health',
               Privacy: 'profile/privacy',
               PairSensor: 'profile/pair-sensor',

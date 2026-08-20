@@ -5,6 +5,7 @@ import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { getMyDevices } from '../../api/client';
 import { Screen } from '../../components/Screen';
 import { useRemote } from '../../lib/useRemote';
+import { useAuth } from '../../state/auth';
 import { usePortable } from '../../state/portable';
 import { colors, space, type } from '../../theme';
 import type { ProfileStackParamList } from '../../navigation/types';
@@ -14,10 +15,24 @@ type Row = { label: string; hint?: string; onPress: () => void };
 
 export function ProfileSettingsScreen({ navigation }: Props) {
   const { state, deviceName } = usePortable();
+  const { status: authStatus, email } = useAuth();
   const { data } = useRemote(useCallback(() => getMyDevices(), []));
   const registered = data?.devices ?? [];
 
+  // Account sits first: it decides whether anything below is kept with the person or with the
+  // handset, and until now the app never said which.
+  const accountHint =
+    authStatus === 'signed_in' ? `ลงชื่อเข้าใช้แล้ว · ${email ?? ''}`.trim()
+    : authStatus === 'anonymous' ? 'ยังไม่ได้ผูกบัญชี — ข้อมูลอยู่บนเครื่องนี้'
+    : authStatus === 'signed_out' ? 'ออกจากระบบแล้ว'
+    : authStatus === 'loading' ? 'กำลังตรวจสอบ…'
+    : 'ยังไม่ได้ตั้งค่าการเชื่อมต่อบัญชี';
+
   const sections: { title: string; items: Row[] }[] = [
+    {
+      title: 'Account',
+      items: [{ label: 'บัญชีของฉัน', hint: accountHint, onPress: () => navigation.navigate('Account') }],
+    },
     {
       title: 'Device',
       items: [

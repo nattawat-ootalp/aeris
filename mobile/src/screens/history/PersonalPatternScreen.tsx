@@ -3,6 +3,7 @@ import { useCallback } from 'react';
 import { StyleSheet, Text } from 'react-native';
 import { getPersonalPattern } from '../../api/client';
 import { EmptyState, ErrorState, InfoCard, LoadingState, MetaRow } from '../../components/ui';
+import { SignInRequired } from '../../components/SignInRequired';
 import { Screen } from '../../components/Screen';
 import { useActiveDeviceId, withDevice } from '../../lib/device';
 import { useRemote } from '../../lib/useRemote';
@@ -23,7 +24,7 @@ export function PersonalPatternScreen() {
       {loading ? (
         <LoadingState />
       ) : error ? (
-        unauthenticated ? <EmptyState title="ยังเชื่อมต่อบัญชีไม่ได้ — ข้อมูลส่วนตัวต้องลงชื่อเข้าใช้ก่อน" /> : noDevice ? <EmptyState title="ยังไม่มีอุปกรณ์สำหรับแสดงข้อมูล" /> : <ErrorState reason="Could not load your pattern" onRetry={reload} />
+        unauthenticated ? <SignInRequired /> : noDevice ? <EmptyState title="ยังไม่มีอุปกรณ์สำหรับแสดงข้อมูล" /> : <ErrorState reason="Could not load your pattern" onRetry={reload} />
       ) : !data || data.sample_size === 0 ? (
         <EmptyState title="ยังไม่มีเหตุการณ์อาการที่บันทึกไว้ในช่วง 30 วัน" />
       ) : (

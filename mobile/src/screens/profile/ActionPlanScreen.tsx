@@ -10,6 +10,7 @@ import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { getActionPlan, saveActionPlan } from '../../api/client';
 import { EmptyState, ErrorState, InfoCard, LoadingState, PrimaryButton, SectionLabel } from '../../components/ui';
+import { SignInRequired } from '../../components/SignInRequired';
 import { Screen } from '../../components/Screen';
 import { useRemote } from '../../lib/useRemote';
 import { colors, radius, space, statusColor, type } from '../../theme';
@@ -44,7 +45,7 @@ export function ActionPlanScreen() {
   if (error || !data) {
     return (
       <Screen title="Action Plan" subtitle="แผนรับมือที่คุณหรือแพทย์กำหนดไว้">
-        {unauthenticated ? <EmptyState title="ยังเชื่อมต่อบัญชีไม่ได้ — ข้อมูลส่วนตัวต้องลงชื่อเข้าใช้ก่อน" /> : <ErrorState reason="Could not load your action plan" onRetry={reload} />}
+        {unauthenticated ? <SignInRequired /> : <ErrorState reason="Could not load your action plan" onRetry={reload} />}
       </Screen>
     );
   }

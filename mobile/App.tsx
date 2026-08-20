@@ -11,6 +11,7 @@ import type { RootStackParamList } from './src/navigation/types';
 import { EmergencyBoundaryScreen } from './src/screens/emergency/EmergencyBoundaryScreen';
 import { SosScreen } from './src/screens/emergency/SosScreen';
 import { OnboardingScreen } from './src/screens/onboarding/OnboardingScreen';
+import { AuthProvider } from './src/state/auth';
 import { PortableProvider } from './src/state/portable';
 import { SosBridge } from './src/state/SosBridge';
 import { colors } from './src/theme';
@@ -32,7 +33,8 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <PortableProvider>
+      <AuthProvider>
+        <PortableProvider>
         <StatusBar style="dark" />
         {/* Gives every screen its own URL in the web build (and keeps `aeris://` deep links
             working on device). `/` is unmapped on purpose so the onboarding flag below, not
@@ -57,7 +59,8 @@ export default function App() {
           </RootStack.Navigator>
           <SosBridge />
         </NavigationContainer>
-      </PortableProvider>
+        </PortableProvider>
+      </AuthProvider>
     </SafeAreaProvider>
   );
 }
