@@ -3,7 +3,6 @@ import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
 import { getDeviceDecision, getForecast, getRisk } from '../../api/client';
 import { Columns, InfoCard, LoadingState, MetaRow } from '../../components/ui';
 import { HeroStatusCard } from '../../components/WatchStatus';
@@ -12,6 +11,7 @@ import { clockLabel, freshnessLabel, measuredAtLabel } from '../../lib/format';
 import { useActiveDeviceId, useThresholds, watchStatusFor, withDevice } from '../../lib/device';
 import { reasonText } from '../../lib/reasons';
 import { ageSeconds, useNow } from '../../lib/useNow';
+import { usePoll } from '../../lib/usePoll';
 import { ForecastCard, RiskCard } from '../../components/RiskCards';
 import { usePortable } from '../../state/portable';
 import { colors, radius, space, statusColor, type } from '../../theme';
@@ -19,6 +19,12 @@ import { toWatchStatus, type DecisionEvent, type Forecast as ForecastType, type 
 import type { HomeStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<HomeStackParamList, 'Home'>;
+
+/** How often the screen re-asks the backend while it is the visible screen in a foreground
+ *  tab. The portable reports every few seconds and the outbox forwards each frame, so twenty
+ *  seconds keeps the score and the projection moving without polling faster than the data
+ *  behind them changes. */
+const REFRESH_MS = 20_000;
 
 export function HomeScreen({ navigation }: Props) {
   const { telemetry, telemetryAt, state: bleState, lastDeviceName, startPairing } = usePortable();
@@ -31,6 +37,10 @@ export function HomeScreen({ navigation }: Props) {
   const thresholds = useThresholds();
   const [risk, setRisk] = useState<RiskScore | null>(null);
   const [forecast, setForecast] = useState<ForecastType | null>(null);
+  // When each of the two was last answered for, so the cards can say how old the figure they
+  // are showing is instead of letting a frozen number read as a live one.
+  const [riskAt, setRiskAt] = useState<number | null>(null);
+  const [forecastAt, setForecastAt] = useState<number | null>(null);
 
   const load = useCallback(() => {
     setRemote((s) => ({ ...s, loading: true }));
@@ -39,21 +49,25 @@ export function HomeScreen({ navigation }: Props) {
       .catch((e) => setRemote({ loading: false, error: String(e) }));
   }, [activeDeviceId]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
-  useEffect(() => { load(); }, [load]);
-
   // Risk and projection are independent of the current-decision call: either can be absent
   // (unauthenticated, or too little data) without blocking the rest of the screen.
-  useEffect(() => {
-    let cancelled = false;
+  const loadInsights = useCallback(() => {
     withDevice(activeDeviceId, getRisk)
-      .then((r) => { if (!cancelled) setRisk(r); })
-      .catch(() => { if (!cancelled) setRisk(null); });
+      .then((r) => { setRisk(r); setRiskAt(Date.now()); })
+      .catch(() => { setRisk(null); setRiskAt(null); });
     withDevice(activeDeviceId, (id) => getForecast(id))
-      .then((f) => { if (!cancelled) setForecast(f); })
-      .catch(() => { if (!cancelled) setForecast(null); });
-    return () => { cancelled = true; };
+      .then((f) => { setForecast(f); setForecastAt(Date.now()); })
+      .catch(() => { setForecast(null); setForecastAt(null); });
   }, [activeDeviceId]);
+
+  // Every reading the device sends goes to the backend, so the score and the projection move
+  // between visits to this screen. Both are re-asked on a cadence — and again the moment the
+  // active device changes — so the page shows what is true now rather than what was true when
+  // it opened.
+  usePoll(load, REFRESH_MS);
+  usePoll(loadInsights, REFRESH_MS);
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadInsights(); }, [loadInsights]);
 
   const usingLocal = bleState === 'connected' && telemetry != null;
   // The device is reporting, but the boundaries that turn a number into a status have not
@@ -104,7 +118,9 @@ export function HomeScreen({ navigation }: Props) {
         </Pressable>
       }
     >
-      {remote.loading && !usingLocal ? (
+      {/* A refresh must not blank the screen it is refreshing: once there is something to
+          show, a poll in flight leaves it standing and swaps the numbers when it answers. */}
+      {remote.loading && !remote.data && !usingLocal ? (
         <LoadingState />
       ) : (
         <Columns>
@@ -199,8 +215,8 @@ export function HomeScreen({ navigation }: Props) {
       ) : null}
 
       <Columns>
-        <RiskCard risk={risk} />
-        <ForecastCard forecast={forecast} />
+        <RiskCard risk={risk} ageSec={ageSeconds(riskAt, now)} />
+        <ForecastCard forecast={forecast} ageSec={ageSeconds(forecastAt, now)} />
       </Columns>
 
       {bleState === 'disconnected' && lastDeviceName ? (

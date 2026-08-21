@@ -7,6 +7,7 @@
  */
 import { StyleSheet, Text, View } from 'react-native';
 import { InfoCard } from './ui';
+import { freshnessLabel } from '../lib/format';
 import { colors, radius, space, statusColor, type } from '../theme';
 import type { Forecast, RiskScore, WatchStatus } from '../types';
 
@@ -18,7 +19,7 @@ const COMPONENT_LABELS: Record<string, string> = {
   temporal: 'Time of day',
 };
 
-export function RiskCard({ risk }: { risk: RiskScore | null }) {
+export function RiskCard({ risk, ageSec }: { risk: RiskScore | null; ageSec?: number | null }) {
   if (!risk) return null;
   const label = risk.watch_label as WatchStatus;
   const color = statusColor(label);
@@ -29,6 +30,7 @@ export function RiskCard({ risk }: { risk: RiskScore | null }) {
         <Text style={styles.noData}>ข้อมูลไม่พอสำหรับคำนวณค่านี้</Text>
         <Text style={styles.reasons}>{formatReasons(risk.reason_codes)}</Text>
         <Text style={styles.note}>{risk.note}</Text>
+        <UpdatedAt ageSec={ageSec} />
       </InfoCard>
     );
   }
@@ -65,11 +67,12 @@ export function RiskCard({ risk }: { risk: RiskScore | null }) {
         <Text style={styles.metaChip}>Samples · {risk.sample_size}</Text>
       </View>
       <Text style={styles.note}>{risk.note}</Text>
+      <UpdatedAt ageSec={ageSec} />
     </InfoCard>
   );
 }
 
-export function ForecastCard({ forecast }: { forecast: Forecast | null }) {
+export function ForecastCard({ forecast, ageSec }: { forecast: Forecast | null; ageSec?: number | null }) {
   if (!forecast) return null;
   const minutes = Math.round(forecast.horizon_sec / 60);
 
@@ -78,6 +81,7 @@ export function ForecastCard({ forecast }: { forecast: Forecast | null }) {
       <InfoCard title={`Next ${minutes} min`}>
         <Text style={styles.noData}>ยังพยากรณ์ไม่ได้ — ข้อมูลล่าสุดไม่พอหรือขาดช่วง</Text>
         <Text style={styles.reasons}>{formatReasons(forecast.reason_codes)}</Text>
+        <UpdatedAt ageSec={ageSec} />
       </InfoCard>
     );
   }
@@ -102,8 +106,17 @@ export function ForecastCard({ forecast }: { forecast: Forecast | null }) {
         <Text style={styles.metaChip}>Samples · {forecast.sample_size}</Text>
       </View>
       <Text style={styles.note}>{forecast.note}</Text>
+      <UpdatedAt ageSec={ageSec} />
     </InfoCard>
   );
+}
+
+/** How long ago the figure above was asked for. The cards re-ask on a cadence, and a number
+ *  that changes on its own has to say when it last did — otherwise a stalled refresh is
+ *  indistinguishable from an environment that simply is not moving. */
+function UpdatedAt({ ageSec }: { ageSec?: number | null }) {
+  if (ageSec == null) return null;
+  return <Text style={styles.updated}>อัปเดต · {freshnessLabel(ageSec)}</Text>;
 }
 
 function formatReasons(codes: string[]): string {
@@ -135,4 +148,5 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   note: { ...type.caption, color: colors.textFaint, marginTop: space.sm, lineHeight: 16 },
+  updated: { ...type.caption, color: colors.textFaint, marginTop: space.xs },
 });
