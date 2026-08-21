@@ -21,10 +21,10 @@ import type { HomeStackParamList } from '../../navigation/types';
 type Props = NativeStackScreenProps<HomeStackParamList, 'Home'>;
 
 /** How often the screen re-asks the backend while it is the visible screen in a foreground
- *  tab. The portable reports every few seconds and the outbox forwards each frame, so twenty
- *  seconds keeps the score and the projection moving without polling faster than the data
- *  behind them changes. */
-const REFRESH_MS = 20_000;
+ *  tab. The portable notifies every 5s (BLE_NOTIFY_INTERVAL_MS in firmware/portable/portable.ino)
+ *  and the outbox forwards each frame, so matching that rate is the fastest cadence that still
+ *  lands on new data rather than re-reading the same frame. */
+const REFRESH_MS = 5_000;
 
 /** How far back the risk score averages. The default is six hours, which is the right span for
  *  "how has today been" but wrong for a card sitting beside a live reading: a spike happening

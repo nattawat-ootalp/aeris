@@ -56,6 +56,20 @@ const Ctx = createContext<PortableCtx | null>(null);
  *  holding readings that cannot exist. */
 const MAX_HELD_REPLAYS = 720;
 
+/** How recently a REPLAYED frame must have been measured for it to be allowed to refresh the
+ *  card as well as the record.
+ *
+ *  A replayed frame is normally history and must never be shown as the room the user is
+ *  standing in. But the firmware also buffers a sample when a single notify is refused by the
+ *  stack (`[BLE] notify refused` in ble.cpp) — that sample was measured seconds ago and comes
+ *  back seconds later, and dropping it from the display turns one refused packet into a
+ *  visible ten-to-fifteen second freeze on a card the user is watching tick.
+ *
+ *  Three notify intervals (BLE_NOTIFY_INTERVAL_MS = 5s) is wide enough to cover a refusal and
+ *  its replay, and far too narrow to let a genuine backlog through. The card states the age of
+ *  what it is showing either way, so nothing is presented as fresher than it is. */
+const REPLAY_DISPLAY_MAX_AGE_MS = 15_000;
+
 /** Which portable was connected last. Reloading the website destroys every JS object, the
  *  connected device among them, so without a note of which device it was a refresh would leave
  *  the user to walk back through the pairing chooser by hand. Cleared only when the user
@@ -89,6 +103,10 @@ export function PortableProvider({ children }: { children: ReactNode }) {
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [telemetry, setTelemetry] = useState<PortableTelemetry | null>(null);
   const [telemetryAt, setTelemetryAt] = useState<number | null>(null);
+  // The same value, readable from inside a notification callback. `telemetryAt` itself is
+  // captured stale by the subscription closure, and the replay path has to compare against
+  // what is actually on screen right now to avoid moving the card backwards in time.
+  const telemetryAtRef = useRef<number | null>(null);
   const [status, setStatus] = useState<PortableStatus | null>(null);
   const [lastSeenAt, setLastSeenAt] = useState<number | null>(null);
   const [lastSos, setLastSos] = useState<PortableSos | null>(null);
@@ -110,6 +128,18 @@ export function PortableProvider({ children }: { children: ReactNode }) {
     const capturedAt = clockRef.current.observeBuffered(t.ts);
     if (capturedAt !== null) {
       enqueueReading(toIngestPayload(deviceId, t, capturedAt));
+      // Recent enough to still describe the air the user is in, and newer than what is on
+      // screen: let it close the gap a refused notify would otherwise leave. Never moves the
+      // card backwards, and never touches the clock anchor — only a live frame may do that.
+      if (
+        Date.now() - capturedAt <= REPLAY_DISPLAY_MAX_AGE_MS &&
+        capturedAt > (telemetryAtRef.current ?? 0)
+      ) {
+        telemetryAtRef.current = capturedAt;
+        setTelemetry(t);
+        setTelemetryAt(capturedAt);
+        setLastSeenAt(Date.now());
+      }
       return;
     }
     heldReplaysRef.current.push(t);
@@ -163,6 +193,7 @@ export function PortableProvider({ children }: { children: ReactNode }) {
           // Dated once, here, from the same anchor the stored reading uses — so what the card
           // says and what the record says are the same moment.
           const capturedAt = clockRef.current.observeLive(t.ts);
+          telemetryAtRef.current = capturedAt;
           setTelemetryAt(capturedAt);
           // Queue for the backend rather than firing and forgetting: an upload that fails
           // used to lose the sample outright. The timestamp is when the DEVICE measured it,
@@ -177,6 +208,7 @@ export function PortableProvider({ children }: { children: ReactNode }) {
         () => {
           setState('disconnected');
           setTelemetry(null);
+          telemetryAtRef.current = null;
           setTelemetryAt(null);
           setStatus(null);
           setDeviceId(null);
@@ -274,6 +306,7 @@ export function PortableProvider({ children }: { children: ReactNode }) {
     deviceRef.current = null;
     setState('disconnected');
     setTelemetry(null);
+    telemetryAtRef.current = null;
     setTelemetryAt(null);
     setStatus(null);
     setDeviceId(null);
