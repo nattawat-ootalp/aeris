@@ -19,7 +19,17 @@ const COMPONENT_LABELS: Record<string, string> = {
   temporal: 'Time of day',
 };
 
-export function RiskCard({ risk, ageSec }: { risk: RiskScore | null; ageSec?: number | null }) {
+export function RiskCard({
+  risk,
+  ageSec,
+  windowHours,
+}: {
+  risk: RiskScore | null;
+  ageSec?: number | null;
+  /** How many hours of exposure the score averages over — shown, because the same reading
+   *  yields a different score over a different span and a bare number hides that. */
+  windowHours?: number;
+}) {
   if (!risk) return null;
   const label = risk.watch_label as WatchStatus;
   const color = statusColor(label);
@@ -65,6 +75,9 @@ export function RiskCard({ risk, ageSec }: { risk: RiskScore | null; ageSec?: nu
       <View style={styles.metaFooter}>
         <Text style={styles.metaChip}>Confidence · {risk.confidence}</Text>
         <Text style={styles.metaChip}>Samples · {risk.sample_size}</Text>
+        {windowHours != null ? (
+          <Text style={styles.metaChip}>ย้อนหลัง · {windowHours} ชม.</Text>
+        ) : null}
       </View>
       <Text style={styles.note}>{risk.note}</Text>
       <UpdatedAt ageSec={ageSec} />

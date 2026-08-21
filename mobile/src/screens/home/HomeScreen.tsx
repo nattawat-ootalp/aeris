@@ -26,6 +26,13 @@ type Props = NativeStackScreenProps<HomeStackParamList, 'Home'>;
  *  behind them changes. */
 const REFRESH_MS = 20_000;
 
+/** How far back the risk score averages. The default is six hours, which is the right span for
+ *  "how has today been" but wrong for a card sitting beside a live reading: a spike happening
+ *  right now is divided by six hours of quiet air and the number barely moves, so the score
+ *  reads Normal next to a HIGH measurement. One hour still averages away single noisy frames
+ *  while following conditions the user can actually feel. */
+const RISK_WINDOW_HOURS = 1;
+
 export function HomeScreen({ navigation }: Props) {
   const { telemetry, telemetryAt, state: bleState, lastDeviceName, startPairing } = usePortable();
   // `receivedAt` is kept with the data so its age can go on counting after it arrives: the
@@ -52,7 +59,7 @@ export function HomeScreen({ navigation }: Props) {
   // Risk and projection are independent of the current-decision call: either can be absent
   // (unauthenticated, or too little data) without blocking the rest of the screen.
   const loadInsights = useCallback(() => {
-    withDevice(activeDeviceId, getRisk)
+    withDevice(activeDeviceId, (id) => getRisk(id, RISK_WINDOW_HOURS))
       .then((r) => { setRisk(r); setRiskAt(Date.now()); })
       .catch(() => { setRisk(null); setRiskAt(null); });
     withDevice(activeDeviceId, (id) => getForecast(id))
@@ -215,7 +222,7 @@ export function HomeScreen({ navigation }: Props) {
       ) : null}
 
       <Columns>
-        <RiskCard risk={risk} ageSec={ageSeconds(riskAt, now)} />
+        <RiskCard risk={risk} ageSec={ageSeconds(riskAt, now)} windowHours={RISK_WINDOW_HOURS} />
         <ForecastCard forecast={forecast} ageSec={ageSeconds(forecastAt, now)} />
       </Columns>
 
