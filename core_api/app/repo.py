@@ -17,8 +17,11 @@ from intelligence.parsing import parse_timestamp
 from . import analytics, influx_query
 from .destination import NodeContext
 
-_baseline_cache: dict[tuple[str, int], tuple[float, list[float]]] = {}
+_baseline_cache: dict[tuple[tuple[str, ...], int], tuple[float, list[float]]] = {}
 _BASELINE_CACHE_TTL_SEC = 300.0  # 5 minutes in-memory cache
+
+_account_devices_cache: dict[tuple[str, str], tuple[float, list[str]]] = {}
+_ACCOUNT_DEVICES_TTL_SEC = 300.0
 
 
 def _row_to_reading(device_id: str, row: dict) -> Reading:
@@ -41,20 +44,65 @@ def get_recent_readings(device_id: str, hours: int = 6) -> list[Reading]:
     return [_row_to_reading(device_id, r) for r in influx_query.history(device_id, hours)]
 
 
-def get_baseline_values(device_id: str, days: int = 14) -> list[float]:
+def baseline_device_ids(user_sub: str | None, device_id: str) -> list[str]:
+    """Every device on the account whose readings the personal baseline should pool.
+
+    The baseline is a person's own normal, not one piece of hardware's. A device id is issued
+    by the platform the app happens to be running on — a browser hands out a fresh BLE id per
+    pairing — so keying the reference range on the id alone means a person who re-pairs, or
+    opens the app somewhere else, is thrown back to "not enough samples yet" with weeks of
+    their own readings still sitting in the bucket under the previous id.
+
+    Only devices of the same kind are pooled. A station the account has added reports the
+    ambient air of a whole area; folding that into the reference range for a device carried on
+    the person would move the range for reasons that have nothing to do with what they
+    breathed.
+
+    Falls back to the requested device alone when nobody is signed in, when the device is not
+    registered to that account, or when Supabase cannot be reached — a baseline built from one
+    device is the old behaviour, which is correct, just narrower.
+    """
+    if not user_sub:
+        return [device_id]
+
     now = time.time()
-    key = (device_id, days)
+    key = (user_sub, device_id)
+    if key in _account_devices_cache:
+        ts, cached_ids = _account_devices_cache[key]
+        if now - ts < _ACCOUNT_DEVICES_TTL_SEC:
+            return cached_ids
+
+    try:
+        rows = list_devices(user_sub)
+    except Exception:
+        # A registry lookup that fails must not take the decision down with it: the device in
+        # the path is still a device, and its own history still answers the question.
+        return [device_id]
+
+    mine = next((r for r in rows if r.get("external_id") == device_id), None)
+    if mine is None:
+        ids = [device_id]
+    else:
+        ids = [r["external_id"] for r in rows if r.get("external_id") and r.get("kind") == mine.get("kind")]
+        if device_id not in ids:
+            ids.append(device_id)
+    _account_devices_cache[key] = (now, ids)
+    return ids
+
+
+def get_baseline_values(device_id: str, days: int = 14, user_sub: str | None = None) -> list[float]:
+    device_ids = baseline_device_ids(user_sub, device_id)
+    now = time.time()
+    # Keyed by the whole set, so the pooled answer and the single-device one never overwrite
+    # each other — the same device is asked about both ways, signed in and not.
+    key = (tuple(sorted(device_ids)), days)
     if key in _baseline_cache:
         ts, cached_val = _baseline_cache[key]
         if now - ts < _BASELINE_CACHE_TTL_SEC:
             return cached_val
 
     # Query PM2.5 specifically with downsampling rather than all fields for 14 days
-    if hasattr(influx_query, "pm25_values"):
-        values = influx_query.pm25_values(device_id, hours=days * 24)
-    else:
-        rows = influx_query.history(device_id, hours=days * 24)
-        values = [r["pm2_5"] for r in rows if r.get("pm2_5") is not None]
+    values = influx_query.pm25_values(device_ids, hours=days * 24)
     _baseline_cache[key] = (now, values)
     return values
 

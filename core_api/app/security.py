@@ -99,6 +99,22 @@ def decode_supabase_token(token: str) -> dict:
     )
 
 
+def optional_user(creds: HTTPAuthorizationCredentials | None = Depends(_bearer)) -> dict | None:
+    """The signed-in user when the request carries a usable token, otherwise None.
+
+    For endpoints that must keep answering without a session — the live decision the home card
+    reads is served for public station ids too — but that can answer *better* with one, by
+    pooling the caller's own devices instead of the single id in the path. A missing or
+    unreadable token is not an error here; it just means the anonymous answer.
+    """
+    if creds is None:
+        return None
+    try:
+        return require_user(creds)
+    except HTTPException:
+        return None
+
+
 def require_user(creds: HTTPAuthorizationCredentials | None = Depends(_bearer)) -> dict:
     if creds is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "missing bearer token")

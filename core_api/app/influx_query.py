@@ -174,15 +174,21 @@ from(bucket: "{settings.INFLUXDB_BUCKET}")
     return out
 
 
-def pm25_values(device_id: str, hours: int = 336) -> list[float]:
-    """Efficiently query only PM2.5 readings over a time range, with downsampling for large ranges."""
-    dev = _safe(device_id)
+def pm25_values(device_id: str | list[str], hours: int = 336) -> list[float]:
+    """Efficiently query only PM2.5 readings over a time range, with downsampling for large ranges.
+
+    Accepts several ids so a personal baseline can pool every device on one account in a single
+    query: asking per device and concatenating would cost a round trip each, and the caller
+    only wants one flat list of values either way.
+    """
+    devices = [device_id] if isinstance(device_id, str) else list(device_id)
+    predicate = _device_filter(devices)
     hours = max(1, min(int(hours), 24 * 90))
     window_clause = '|> aggregateWindow(every: 15m, fn: mean, createEmpty: false)' if hours > 24 else ''
     flux = f'''
 from(bucket: "{settings.INFLUXDB_BUCKET}")
   |> range(start: -{hours}h)
-  |> filter(fn: (r) => r._measurement == "air_quality" and (r.device_id == "{dev}" or r.node_id == "{dev}") and r._field == "pm2_5")
+  |> filter(fn: (r) => r._measurement == "air_quality" and ({predicate}) and r._field == "pm2_5")
   {window_clause}
   |> sort(columns: ["_time"])
 '''

@@ -131,14 +131,14 @@ def test_timeline_and_event_detail_roundtrip(monkeypatch):
 
 def test_data_quality_reports_no_data_without_readings(monkeypatch):
     _mock_readings(monkeypatch, [])
-    monkeypatch.setattr(repo, "get_baseline_values", lambda d, days=14: [])
+    monkeypatch.setattr(repo, "get_baseline_values", lambda d, days=14, user_sub=None: [])
     body = client.get("/devices/P001/data-quality").json()
     assert body["has_data"] is False
     assert body["confidence"] == "LOW"
 
 
 def test_baseline_not_ready_below_minimum_samples(monkeypatch):
-    monkeypatch.setattr(repo, "get_baseline_values", lambda d, days=14: [20.0, 21.0])
+    monkeypatch.setattr(repo, "get_baseline_values", lambda d, days=14, user_sub=None: [20.0, 21.0])
     monkeypatch.setattr(repo.influx_query, "latest_point", lambda d: {"pm2_5": 22.0, "time": "2026-08-15T10:00:00+00:00"})
     body = client.get("/devices/P001/baseline", headers=AUTH).json()
     assert body["ready"] is False and body["median"] is None

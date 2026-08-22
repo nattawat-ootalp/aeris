@@ -37,7 +37,7 @@ def _series(now: datetime, values: list[float], step_min: int = 1) -> list[Readi
 
 def _mock(monkeypatch, readings, *, baseline=None, symptoms=None):
     monkeypatch.setattr(repo, "get_recent_readings", lambda d, hours=6: readings)
-    monkeypatch.setattr(repo, "get_baseline_values", lambda d, days=14: baseline or [])
+    monkeypatch.setattr(repo, "get_baseline_values", lambda d, days=14, user_sub=None: baseline or [])
     monkeypatch.setattr(repo, "get_symptoms", lambda sub, since: symptoms or [])
 
 

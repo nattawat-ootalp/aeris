@@ -144,8 +144,14 @@ export async function getHealth(): Promise<{ status: string }> {
   return getJson('/health');
 }
 
+/**
+ * Sent with the session token when there is one. The endpoint answers without it — public
+ * station ids have no owner — but a signed-in caller gets a baseline pooled across every
+ * device on their account, so re-pairing a portable does not reset their personal reference
+ * range to "not enough samples yet".
+ */
 export async function getDeviceDecision(deviceId: string): Promise<DecisionEvent> {
-  return getJson(`/devices/${encodeURIComponent(deviceId)}/decision`);
+  return getJsonAuthed(`/devices/${encodeURIComponent(deviceId)}/decision`);
 }
 
 export async function assessDestination(lat: number, lon: number): Promise<DestinationAssessment> {
@@ -274,7 +280,7 @@ export async function getWeeklyHistory(deviceId: string, days = 7): Promise<Week
 }
 
 export async function getDataQuality(deviceId: string): Promise<DataQuality> {
-  return getJson(`${dev(deviceId)}/data-quality`);
+  return getJsonAuthed(`${dev(deviceId)}/data-quality`);
 }
 
 export async function getPersonalBaseline(deviceId: string): Promise<PersonalBaseline> {

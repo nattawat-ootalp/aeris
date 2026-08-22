@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from intelligence.baseline import build_baseline
 from intelligence.config import CONFIG
 from intelligence.exposure import aggregate_exposure
+from intelligence.humidity import correct_pm25_for_humidity
 from intelligence.parsing import parse_timestamp
 from intelligence.pattern import detect_pattern
 from intelligence.predict import forecast_pm25
@@ -24,7 +25,7 @@ from . import analytics, repo
 from .decision_service import evaluate_readings
 from .destination import assess_destination
 from .influx_query import now_utc
-from .security import require_user
+from .security import optional_user, require_user
 
 router = APIRouter(tags=["core"])
 
@@ -62,11 +63,23 @@ def destination_assess(
 
 
 @router.get("/devices/{device_id}/decision")
-def device_decision(device_id: str) -> dict:
+def device_decision(device_id: str, user: dict | None = Depends(optional_user)) -> dict:
+    # The token is optional: this endpoint answers for public station ids too. It is read only
+    # to pool the caller's own devices into their baseline (repo.baseline_device_ids), so a
+    # replaced portable does not reset the personal reference range; an anonymous caller still
+    # gets the plain single-device answer.
     now = now_utc()
     readings = repo.get_recent_readings(device_id)
-    baseline_values = repo.get_baseline_values(device_id)
-    return evaluate_readings(readings, now, baseline_values=baseline_values)
+    baseline_values = repo.get_baseline_values(device_id, user_sub=(user or {}).get("sub"))
+    contract = evaluate_readings(readings, now, baseline_values=baseline_values)
+    # Additive annotation only. The RH correction is uncalibrated and ships disabled, so with
+    # the flag off this block reports the raw value back with a RH_CORRECTION_DISABLED reason
+    # and every existing field — `pm25` above all — is exactly what it was before (§5.1
+    # companion; see intelligence/humidity.py for why it is not applied to `pm25` itself).
+    contract["pm25_rh_correction"] = correct_pm25_for_humidity(
+        contract.get("pm25"), contract.get("humidity")
+    ).to_payload()
+    return contract
 
 
 @router.get("/config/thresholds")
@@ -213,11 +226,12 @@ def device_weekly(device_id: str, days: int = Query(7, ge=1, le=30)) -> dict:
 
 
 @router.get("/devices/{device_id}/data-quality")
-def device_data_quality(device_id: str) -> dict:
+def device_data_quality(device_id: str, user: dict | None = Depends(optional_user)) -> dict:
     now = now_utc()
     readings = repo.get_recent_readings(device_id, hours=6)
     quality = analytics.data_quality(readings, now)
-    decision = evaluate_readings(readings, now, baseline_values=repo.get_baseline_values(device_id))
+    baseline_values = repo.get_baseline_values(device_id, user_sub=(user or {}).get("sub"))
+    decision = evaluate_readings(readings, now, baseline_values=baseline_values)
     return {**quality, "confidence": decision["confidence"], "decision_reasons": decision["reason_codes"]}
 
 
@@ -225,7 +239,7 @@ def device_data_quality(device_id: str) -> dict:
 def device_baseline(device_id: str, user: dict = Depends(require_user)) -> dict:
     if not user.get("sub"):
         raise HTTPException(401, "token has no subject")
-    values = repo.get_baseline_values(device_id)
+    values = repo.get_baseline_values(device_id, user_sub=user["sub"])
     baseline = build_baseline(values)
     latest = repo.influx_query.latest_point(device_id)
     return {
@@ -365,7 +379,7 @@ def device_risk(
     quality = analytics.data_quality(readings, now)
     points = analytics.valid_points(readings)
     window = aggregate_exposure(points, CONFIG)
-    baseline = build_baseline(repo.get_baseline_values(device_id))
+    baseline = build_baseline(repo.get_baseline_values(device_id, user_sub=sub))
     symptom_rows = repo.get_symptoms(sub, now - timedelta(seconds=CONFIG.risk_history_window_sec))
 
     result = compute_risk(

@@ -31,7 +31,7 @@ def test_device_decision(monkeypatch):
     readings = [Reading(device_id="P001", timestamp=now - timedelta(seconds=s),
                         pm25=90, temperature=30, humidity=60, battery=90) for s in (90, 60, 30, 5)]
     monkeypatch.setattr(repo, "get_recent_readings", lambda d, hours=6: readings)
-    monkeypatch.setattr(repo, "get_baseline_values", lambda d, days=14: [])
+    monkeypatch.setattr(repo, "get_baseline_values", lambda d, days=14, user_sub=None: [])
     r = client.get("/devices/P001/decision")
     assert r.status_code == 200
     assert r.json()["reason_codes"]  # always explains itself
